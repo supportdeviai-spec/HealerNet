@@ -1,0 +1,199 @@
+name: healernet
+
+services:
+  # Laravel PHP-FPM Application Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: healernet-app
+    container_name: healernet-app
+    restart: unless-stopped
+    tty: true
+    working_dir: /var/www/html
+    environment:
+      SERVICE_NAME: app
+      APP_ENV: local
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: healernet
+      DB_USERNAME: healernet_user
+      DB_PASSWORD: healernet_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      MAIL_MAILER: "${MAIL_MAILER:-smtp}"
+      MAIL_HOST: "${MAIL_HOST:-mailpit}"
+      MAIL_PORT: "${MAIL_PORT:-465}"
+      MAIL_USERNAME: "${MAIL_USERNAME:-null}"
+      MAIL_PASSWORD: "${MAIL_PASSWORD:-null}"
+      MAIL_ENCRYPTION: "${MAIL_ENCRYPTION:-null}"
+      MAIL_FROM_ADDRESS: "${MAIL_FROM_ADDRESS:-support@healernet.org}"
+      MAIL_FROM_NAME: "${MAIL_FROM_NAME:-HealerNet}"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - healernet-network
+
+  # Nginx Web Server Service
+  web:
+    image: nginx:alpine
+    container_name: healernet-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    networks:
+      - healernet-network
+
+  # Vite React Frontend Development Server (Hot Module Replacement)
+  vite:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: healernet-app
+    container_name: healernet-vite
+    restart: unless-stopped
+    command: ["sh", "/var/www/html/docker/vite-entrypoint.sh"]
+    working_dir: /var/www/html
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+      WATCHPACK_POLLING: "true"
+      NODE_ENV: development
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/var/www/html
+      # Keep node_modules inside the container — much faster than bind-mount on WSL/Windows
+      - healernet_node_modules:/var/www/html/node_modules
+    depends_on:
+      - app
+    networks:
+      - healernet-network
+
+  # MySQL Database Service
+  mysql:
+    image: mysql:8.0
+    container_name: healernet-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: healernet
+      MYSQL_USER: healernet_user
+      MYSQL_PASSWORD: healernet_secret
+      MYSQL_ROOT_PASSWORD: root_secret
+    ports:
+      - "${FORWARD_DB_PORT:-3307}:3306"
+    volumes:
+      # Named volume keeps data across: docker compose down / up / restart
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uhealernet_user", "-phealernet_secret"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - healernet-network
+
+  # phpMyAdmin Database Management Service
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: healernet-phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: healernet_user
+      PMA_PASSWORD: healernet_secret
+      UPLOAD_LIMIT: 100M
+    depends_on:
+      - mysql
+    networks:
+      - healernet-network
+
+  # Redis In-Memory Cache & Queue Service
+  redis:
+    image: redis:alpine
+    container_name: healernet-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - healernet-network
+
+  # Queue Worker Service
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: healernet-app
+    container_name: healernet-queue
+    restart: unless-stopped
+    command: php artisan queue:work --tries=3 --timeout=90
+    working_dir: /var/www/html
+    environment:
+      SERVICE_NAME: queue
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: healernet
+      DB_USERNAME: healernet_user
+      DB_PASSWORD: healernet_secret
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_started
+    networks:
+      - healernet-network
+
+  # Mailpit Local Email Testing Service
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: healernet-mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - healernet-network
+
+networks:
+  healernet-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    name: healernet_mysql_data
+    driver: local
+  redis_data:
+    name: healernet_redis_data
+    driver: local
+  healernet_node_modules:
+    name: healernet_node_modules
+    driver: local
