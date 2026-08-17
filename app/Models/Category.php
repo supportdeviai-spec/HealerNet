@@ -24,6 +24,25 @@ class Category extends Model
         $this->attributes['slug'] = Str::slug($value);
     }
 
+    protected static function booted(): void
+    {
+        static::deleting(function (Category $category) {
+            if ($category->isForceDeleting()) {
+                return;
+            }
+
+            $category->releaseUniqueIdentifiers();
+        });
+    }
+
+    public function releaseUniqueIdentifiers(): void
+    {
+        $stamp = $this->id.'-'.now()->timestamp;
+        $this->forceFill([
+            'name' => "deleted-{$stamp}",
+        ])->saveQuietly();
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', 'active');
