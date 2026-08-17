@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\AdminWhatsAppGroupController;
 use App\Http\Controllers\Admin\AdminCountryController;
 use App\Http\Controllers\Admin\AdminRegionController;
 use App\Http\Controllers\Admin\AdminRoleController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\PublicCategoryController;
 use App\Http\Controllers\Api\PublicLocationController;
 use App\Http\Controllers\WhatsAppCommunityController;
@@ -38,6 +39,8 @@ use App\Http\Controllers\CmsPageController;
 | API Routes (Laravel automatically prefixes all routes with /api)
 |--------------------------------------------------------------------------
 */
+
+Route::get('/health', HealthController::class);
 
 // Auth Routes (/api/auth/* and /api/v1/auth/*)
 Route::prefix('auth')->group(function () {

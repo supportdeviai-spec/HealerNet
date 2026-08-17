@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Jobs\SendTemplateEmailJob;
 use App\Models\EmailLog;
+use App\Support\EmailLogo;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -58,6 +59,7 @@ class MailDispatcherService
         try {
             Mail::html($rendered['html'], function ($message) use ($recipient, $rendered) {
                 $message->to($recipient)->subject($rendered['subject']);
+                EmailLogo::embedInto($message);
             });
 
             $this->logEmail($recipient, $rendered['subject'] ?? 'Email', 'sent');

@@ -3,10 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Log;
 use App\Models\EmailLog;
+use App\Support\EmailLogo;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class AdminEmailController extends Controller
 {
@@ -20,7 +21,7 @@ class AdminEmailController extends Controller
         $body = $request->input('body') ?: $request->json('body') ?: 'This is a test email sent from HealerNet Admin Dashboard.';
         $templateName = $request->input('template_name') ?: $request->json('template_name') ?: 'Email Template';
 
-        $logoUrl = asset('images/logo.png');
+        $logoImg = EmailLogo::imgTag(EmailLogo::cidSrc());
 
         // Extract 6-digit OTP code if present in body
         $hasCode = preg_match('/\b\d{6}\b/', $body, $matches);
@@ -67,7 +68,7 @@ class AdminEmailController extends Controller
         <body>
             <div class='email-card'>
                 <div class='header'>
-                    <img src='{$logoUrl}' alt='HealerNet Logo' onerror=\"this.style.display='none'\">
+                        {$logoImg}
                     <h2>HealerNet</h2>
                     <p>Global Network for Evidence-Based Healing</p>
                 </div>
@@ -92,6 +93,7 @@ class AdminEmailController extends Controller
             Mail::html($htmlContent, function ($message) use ($recipient, $subject) {
                 $message->to($recipient)
                         ->subject($subject);
+                EmailLogo::embedInto($message);
             });
 
             try {

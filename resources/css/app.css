@@ -4,6 +4,16 @@
 @source '../../resources/views/**/*.blade.php';
 @source '../../resources/js/**/*.{js,jsx,ts,tsx}';
 
+html {
+  overflow-x: hidden;
+  min-height: 100dvh;
+  background-color: #0A221A;
+}
+
+#app {
+  min-height: 100dvh;
+}
+
 /* ==========================================================================
    HealerNet Theme System & Custom Variables
    ========================================================================== */

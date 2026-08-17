@@ -28,4 +28,6 @@
 ## Production Highlights
 - Zero-downtime deployment strategy.
 - SSL Termination at AWS ALB / CloudFront.
-- Health checks on `/api/health`.
+- Health checks on `/api/health` and `/up`.
+- Canonical live domain: `https://healernet.org` (www redirects to apex).
+- TLS at Nginx (Let's Encrypt); Laravel trusts `X-Forwarded-Proto`.

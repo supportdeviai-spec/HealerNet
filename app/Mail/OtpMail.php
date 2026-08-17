@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Support\EmailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -25,12 +26,13 @@ class OtpMail extends Mailable
     {
         return new Envelope(
             subject: 'HealerNet - Your 6-Digit Email Verification OTP',
+            using: [EmailLogo::embedder()],
         );
     }
 
     public function content(): Content
     {
-        $logoUrl = asset('images/logo.png');
+        $logoImg = EmailLogo::imgTag(EmailLogo::cidSrc());
 
         return new Content(
             htmlString: "
@@ -59,7 +61,7 @@ class OtpMail extends Mailable
             <body>
                 <div class='email-card'>
                     <div class='header'>
-                        <img src='{$logoUrl}' alt='HealerNet Logo' onerror=\"this.style.display='none'\">
+                        {$logoImg}
                         <h2>HealerNet</h2>
                         <p>Global Network for Evidence-Based Healing</p>
                     </div>

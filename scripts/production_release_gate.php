@@ -106,6 +106,7 @@ ok($welcome?->is_active !== false, 'Welcome email template active', true);
 echo "\n--- Routes (critical) ---\n";
 $routes = collect(app('router')->getRoutes())->map(fn ($r) => $r->uri())->all();
 foreach ([
+    'api/health',
     'api/banners/{page}',
     'api/admin/banners',
     'api/auth/login',

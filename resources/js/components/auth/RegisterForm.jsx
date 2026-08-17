@@ -7,7 +7,7 @@ import { useCountries } from '../../hooks/useCountries';
 import { CheckCircle2, Loader2, Send } from 'lucide-react';
 
 const LABEL = 'block text-xs font-bold uppercase tracking-wider text-[#0F382C] dark:text-emerald-200 mb-1.5';
-const INPUT = 'w-full px-4 py-3 rounded-xl bg-white dark:bg-[#071812] border border-[#0F382C]/20 dark:border-[#1E4E3D] text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#65A30D]/50 focus:border-[#65A30D] transition-all shadow-sm disabled:opacity-60';
+const INPUT = 'w-full h-12 px-4 rounded-xl bg-[#071812] border border-white/20 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#65A30D]/40 focus:border-[#65A30D] transition-all disabled:opacity-60';
 const SELECT = INPUT + ' cursor-pointer';
 const BTN_PRIMARY = 'px-4 py-3 rounded-xl bg-[#0F382C] hover:bg-[#145240] text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0 whitespace-nowrap';
 const FIELD_ERROR = 'text-xs text-rose-500 font-medium mt-1.5';
@@ -16,13 +16,59 @@ const TITLE_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.', 'Other'];
 const MAX_NAME_LENGTH = 255;
 const MAX_BUSINESS_NAME_LENGTH = 255;
 
+function daysInMonth(month, year) {
+  return new Date(year, month, 0).getDate();
+}
+
 function formatDobDisplay(raw) {
-  const digits = String(raw || '').replace(/\D/g, '').slice(0, 8);
-  const day = digits.slice(0, 2);
-  const month = digits.slice(2, 4);
-  const year = digits.slice(4, 8);
-  if (digits.length <= 2) return day;
-  if (digits.length <= 4) return `${day} / ${month}`;
+  const incoming = String(raw || '').replace(/\D/g, '');
+  let out = '';
+
+  for (let i = 0; i < incoming.length && out.length < 8; i += 1) {
+    const ch = incoming[i];
+    if (ch < '0' || ch > '9') continue;
+    const pos = out.length;
+
+    if (pos === 0) {
+      if (ch > '3') {
+        out += `0${ch}`;
+      } else {
+        out += ch;
+      }
+      continue;
+    }
+
+    if (pos === 1) {
+      if (out[0] === '0' && ch === '0') continue;
+      if (out[0] === '3' && ch > '1') continue;
+      out += ch;
+      continue;
+    }
+
+    if (pos === 2) {
+      if (ch > '1') {
+        out += `0${ch}`;
+      } else {
+        out += ch;
+      }
+      continue;
+    }
+
+    if (pos === 3) {
+      if (out[2] === '0' && ch === '0') continue;
+      if (out[2] === '1' && ch > '2') continue;
+      out += ch;
+      continue;
+    }
+
+    out += ch;
+  }
+
+  const day = out.slice(0, 2);
+  const month = out.slice(2, 4);
+  const year = out.slice(4, 8);
+  if (out.length <= 2) return day;
+  if (out.length <= 4) return `${day} / ${month}`;
   return `${day} / ${month} / ${year}`;
 }
 
@@ -32,30 +78,42 @@ function parseDobToIso(displayValue) {
     return { iso: null, error: '' };
   }
   if (digits.length !== 8) {
-    return { iso: null, error: 'Enter a valid date as DD / MM / YYYY.' };
+    return { iso: null, error: 'Enter date of birth as DD / MM / YYYY.' };
   }
 
   const day = parseInt(digits.slice(0, 2), 10);
   const month = parseInt(digits.slice(2, 4), 10);
   const year = parseInt(digits.slice(4, 8), 10);
-  const date = new Date(year, month - 1, day);
 
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return { iso: null, error: 'Enter a valid date of birth.' };
+  if (month < 1 || month > 12) {
+    return { iso: null, error: 'Month must be between 01 and 12.' };
+  }
+  if (day < 1 || day > 31) {
+    return { iso: null, error: 'Day must be between 01 and 31.' };
+  }
+
+  const maxDay = daysInMonth(month, year);
+  if (day > maxDay) {
+    return { iso: null, error: `That date is not valid. Use DD / MM / YYYY.` };
   }
 
   if (year < 1900) {
-    return { iso: null, error: 'Enter a valid date of birth.' };
+    return { iso: null, error: 'Year must be 1900 or later.' };
   }
 
+  const date = new Date(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
   if (date > today) {
     return { iso: null, error: 'Date of birth cannot be in the future.' };
+  }
+
+  const oldest = new Date(today);
+  oldest.setFullYear(today.getFullYear() - 120);
+  if (date < oldest) {
+    return { iso: null, error: 'Enter a valid date of birth.' };
   }
 
   return {
@@ -533,7 +591,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <label className={LABEL}>
             Location <span className="text-rose-500">*</span>
@@ -547,6 +605,8 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
             onCountryChange={handleCountryChange}
             onRegionChange={handleRegionChange}
             onCityChange={handleCityChange}
+            className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+            selectClassName={SELECT}
           />
 
           {(locationError || categoryError) && (
@@ -573,7 +633,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           {fieldErrors.category_id && <p className={FIELD_ERROR}>{fieldErrors.category_id[0]}</p>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-[8.5rem_minmax(0,1fr)] gap-2 sm:gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[7.5rem_minmax(0,1fr)] gap-3">
           <div>
             <label className={LABEL} htmlFor="register-title">Title</label>
             <select
@@ -618,12 +678,28 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
             inputMode="numeric"
             placeholder="DD / MM / YYYY"
             value={formData.dateOfBirth}
+            maxLength={14}
             onChange={(e) => {
-              setFormData({ ...formData, dateOfBirth: formatDobDisplay(e.target.value) });
-              setDobError('');
+              const next = formatDobDisplay(e.target.value);
+              setFormData({ ...formData, dateOfBirth: next });
+              const digits = next.replace(/\D/g, '');
+              if (digits.length === 8) {
+                setDobError(parseDobToIso(next).error);
+              } else {
+                setDobError('');
+              }
             }}
-            className={INPUT}
+            onBlur={() => {
+              const digits = String(formData.dateOfBirth || '').replace(/\D/g, '');
+              if (!digits) {
+                setDobError('');
+                return;
+              }
+              setDobError(parseDobToIso(formData.dateOfBirth).error);
+            }}
+            className={`${INPUT} ${dobError ? 'border-rose-500 focus:ring-rose-500/40 focus:border-rose-500' : ''}`}
             autoComplete="bday"
+            aria-invalid={Boolean(dobError)}
           />
           {dobError && <p className={FIELD_ERROR}>{dobError}</p>}
           {fieldErrors.date_of_birth && <p className={FIELD_ERROR}>{fieldErrors.date_of_birth[0]}</p>}
@@ -633,54 +709,51 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           <label className={LABEL}>
             Email<span className="text-rose-500">*</span>
           </label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <div className="flex-1 min-w-0 space-y-2">
-              <div className="relative">
-                <input
-                  type="email"
-                  placeholder="sarah@healernet.org"
-                  value={formData.email}
-                  disabled={otpVerified}
-                  onChange={(e) => {
-                    setFormData({ ...formData, email: e.target.value });
-                    setOtpError('');
-                  }}
-                  className={`${INPUT} ${otpVerified ? 'border-emerald-500 bg-emerald-50/20 pr-28' : ''}`}
-                  required
-                />
-                {otpVerified && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 dark:text-[#A3E635] text-[10px] font-bold flex items-center gap-1">
-                    <CheckCircle2 size={12} /> Verified
-                  </span>
-                )}
-              </div>
-
-              {otpSuccessMsg && !otpVerified && (
-                <p className="text-xs text-emerald-600 dark:text-[#A3E635] font-medium">{otpSuccessMsg}</p>
-              )}
-
-              {otpSent && !otpVerified && (
-                <div ref={otpBoxRef}>
-                  <OtpDigitBoxes
-                    value={formData.otp}
-                    onChange={(val) => {
-                      setFormData({ ...formData, otp: val });
-                      setOtpError('');
-                    }}
-                    onComplete={handleVerifyOtp}
-                    disabled={otpVerifying}
-                    verifying={otpVerifying}
-                  />
-                </div>
-              )}
-            </div>
-
-            {!otpVerified && (
-              <button type="button" onClick={handleSendOtp} disabled={sendingOtp || countdown > 0 || !formData.email} className={`${BTN_PRIMARY} ${otpSent ? 'sm:self-start' : ''}`}>
-                {sendingOtp ? (<><Loader2 size={14} className="animate-spin" /> Sending…</>) : countdown > 0 ? `${countdown}s` : (<><Send size={14} /> Send OTP</>)}
+          <div className="relative">
+            <input
+              type="email"
+              placeholder="sarah@healernet.org"
+              value={formData.email}
+              disabled={otpVerified}
+              onChange={(e) => {
+                setFormData({ ...formData, email: e.target.value });
+                setOtpError('');
+              }}
+              className={`${INPUT} ${otpVerified ? 'border-emerald-500 pr-28' : 'pr-[6.75rem] sm:pr-[7.75rem]'}`}
+              required
+            />
+            {otpVerified ? (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded-md bg-emerald-500/20 text-[#A3E635] text-[10px] font-bold flex items-center gap-1">
+                <CheckCircle2 size={12} /> Verified
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSendOtp}
+                disabled={sendingOtp || countdown > 0 || !formData.email}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-9 px-2.5 sm:px-3 rounded-lg bg-[#145240] hover:bg-[#1a6a52] text-white text-[10px] sm:text-[11px] font-bold flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                {sendingOtp ? <Loader2 size={13} className="animate-spin" /> : countdown > 0 ? `${countdown}s` : (<><Send size={12} className="hidden sm:block" /> Send OTP</>)}
               </button>
             )}
           </div>
+          {otpSuccessMsg && !otpVerified && (
+            <p className="text-xs text-[#A3E635] font-medium mt-2">{otpSuccessMsg}</p>
+          )}
+          {otpSent && !otpVerified && (
+            <div ref={otpBoxRef} className="mt-2">
+              <OtpDigitBoxes
+                value={formData.otp}
+                onChange={(val) => {
+                  setFormData({ ...formData, otp: val });
+                  setOtpError('');
+                }}
+                onComplete={handleVerifyOtp}
+                disabled={otpVerifying}
+                verifying={otpVerifying}
+              />
+            </div>
+          )}
 
           {otpError && <p className={FIELD_ERROR}>{otpError}</p>}
           {fieldErrors.email && <p className={FIELD_ERROR}>{fieldErrors.email[0]}</p>}

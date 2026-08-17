@@ -83,9 +83,9 @@ class AuthController extends Controller
             'title' => ['nullable', 'string', 'max:20', 'in:Mr.,Ms.,Mrs.,Dr.,Prof.,Other'],
             'business_name' => ['nullable', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:1900-01-01'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
             'password' => ['nullable', 'string', 'min:8'],
-            'mobile' => ['required', 'string', 'unique:users,mobile'],
+            'mobile' => ['required', 'string', User::uniqueMobileRule()],
             'category_id' => ['required', 'uuid', 'exists:categories,id'],
             'country_id' => ['required', 'integer', 'exists:countries,id'],
             'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],
@@ -205,7 +205,9 @@ class AuthController extends Controller
             $assignmentService->autoAssign($user);
         }
 
-        Auth::login($user);
+        if (method_exists(Auth::guard(), 'login')) {
+            Auth::login($user);
+        }
         $token = $user->createToken('auth_token')->plainTextToken;
 
         if ($request->hasSession()) {

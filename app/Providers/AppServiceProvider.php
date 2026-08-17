@@ -17,6 +17,7 @@ use App\Repositories\Eloquent\PageRepository;
 use App\Repositories\Eloquent\UserDashboardRepository;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -30,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->configureHttps();
         $this->configureMailTransport();
         $this->configureAuthorization();
 
@@ -49,6 +51,20 @@ class AppServiceProvider extends ServiceProvider
             PasswordReset::class,
             NotifyAdminsOnPasswordReset::class
         );
+    }
+
+    protected function configureHttps(): void
+    {
+        if (! $this->app->environment('production')) {
+            return;
+        }
+
+        URL::forceScheme('https');
+
+        $root = (string) config('app.url');
+        if ($root !== '') {
+            URL::forceRootUrl($root);
+        }
     }
 
     /**

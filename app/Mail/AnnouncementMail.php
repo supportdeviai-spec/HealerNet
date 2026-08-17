@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\User;
 use App\Services\AnnouncementEmailBuilder;
+use App\Support\EmailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
@@ -25,6 +26,7 @@ class AnnouncementMail extends Mailable implements ShouldQueue
     {
         return new Envelope(
             subject: $this->announcementSubject,
+            using: [EmailLogo::embedder()],
         );
     }
 

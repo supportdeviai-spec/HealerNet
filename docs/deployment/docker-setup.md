@@ -100,6 +100,30 @@ Running tests must **not** wipe `healernet`. See `tests/TestCase.php` and `.env.
 
 ---
 
+# 🌐 Live domain (healernet.org)
+
+Full production steps (DNS, SSL, Docker Compose production stack, deploys):
+
+**[docs/deployment/live-server.md](live-server.md)**
+
+Quick start on the VPS:
+
+```bash
+cp .env.production.example .env   # edit passwords, APP_KEY, SMTP
+./docker/prod-up.sh
+./docker/issue-ssl.sh             # after DNS A records point here
+```
+
+| Service | Production URL |
+| :--- | :--- |
+| App | https://healernet.org |
+| Health | https://healernet.org/api/health |
+| Laravel up | https://healernet.org/up |
+
+Do **not** run `./docker/up.sh` (local Vite / phpMyAdmin / Mailpit) on the live server.
+
+---
+
 # ☁️ AWS Deployment Guide
 
 ## Architecture Summary

@@ -78,7 +78,6 @@ export default function LoginForm({ onSwitchToRegister, onNavigate }) {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Email Address */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-[#0F382C] dark:text-emerald-200 mb-1.5">
             Email Address
@@ -93,7 +92,6 @@ export default function LoginForm({ onSwitchToRegister, onNavigate }) {
           />
         </div>
 
-        {/* Password */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="block text-xs font-bold uppercase tracking-wider text-[#0F382C] dark:text-emerald-200">
@@ -102,7 +100,7 @@ export default function LoginForm({ onSwitchToRegister, onNavigate }) {
             <a
               href="#forgot-password"
               onClick={(e) => { e.preventDefault(); onNavigate && onNavigate('forgot-password'); }}
-              className="text-xs font-semibold text-[#0F382C] dark:text-[#A3E635] hover:text-[#65A30D] hover:underline"
+              className="text-xs font-semibold text-[#D4AF37] hover:text-[#E5C158] hover:underline"
             >
               Forgot Password?
             </a>
@@ -117,7 +115,6 @@ export default function LoginForm({ onSwitchToRegister, onNavigate }) {
           />
         </div>
 
-        {/* Remember Me */}
         <div className="flex items-center">
           <input
             id="remember_me"
@@ -131,11 +128,10 @@ export default function LoginForm({ onSwitchToRegister, onNavigate }) {
           </label>
         </div>
 
-        {/* Sign In Button */}
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#0F382C] via-[#145240] to-[#65A30D] hover:from-[#09261E] hover:to-[#558B2F] text-white font-bold text-sm shadow-lg shadow-[#0F382C]/30 transition-all focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50 flex items-center justify-center gap-2"
+          className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-b from-[#0F382C] via-[#145240] to-[#65A30D] hover:from-[#09261E] hover:to-[#558B2F] text-white font-bold text-sm shadow-lg shadow-[#0F382C]/30 transition-all focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/50 flex items-center justify-center gap-2"
         >
           {isLoading ? (
             <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

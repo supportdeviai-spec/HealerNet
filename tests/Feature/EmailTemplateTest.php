@@ -90,6 +90,9 @@ class EmailTemplateTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('status', 'success')
             ->assertJsonStructure(['data' => ['subject', 'html']]);
+
+        $this->assertStringContainsString('/images/logo.png', $response->json('data.html'));
+        $this->assertStringNotContainsString('cid:healernet-logo', $response->json('data.html'));
     }
 
     public function test_admin_can_preview_draft_template(): void
@@ -105,6 +108,20 @@ class EmailTemplateTest extends TestCase
         $response->assertOk()
             ->assertJsonPath('status', 'success')
             ->assertJsonStructure(['data' => ['subject', 'html']]);
+    }
+
+    public function test_sent_email_templates_embed_logo_instead_of_localhost_url(): void
+    {
+        $this->seed(EmailTemplateSeeder::class);
+
+        $rendered = app(\App\Services\TemplateRendererService::class)->render(
+            EmailTemplate::SLUG_OTP,
+            ['code' => '1234', 'email' => 'admin@healernet.org']
+        );
+
+        $this->assertStringContainsString('cid:healernet-logo', $rendered['html']);
+        $this->assertStringNotContainsString('localhost:8000/images/logo.png', $rendered['html']);
+        $this->assertStringContainsString('alt="HealerNet Logo"', $rendered['html']);
     }
 
     public function test_admin_can_send_test_email(): void

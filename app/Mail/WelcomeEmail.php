@@ -6,6 +6,7 @@ use App\Models\EmailTemplate;
 use App\Models\User;
 use App\Services\EmailService;
 use App\Services\TemplateRendererService;
+use App\Support\EmailLogo;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -29,6 +30,7 @@ class WelcomeEmail extends Mailable
 
         return new Envelope(
             subject: $rendered['subject'],
+            using: [EmailLogo::embedder()],
         );
     }
 

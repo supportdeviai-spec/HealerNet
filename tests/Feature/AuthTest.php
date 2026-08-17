@@ -164,4 +164,62 @@ class AuthTest extends TestCase
             'business_name' => null,
         ]);
     }
+
+    public function test_registration_allowed_after_admin_soft_deletes_user(): void
+    {
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+
+        $adminRole = Role::where('slug', 'admin')->firstOrFail();
+        $admin = \App\Models\User::factory()->create(['role_id' => $adminRole->id]);
+        $admin->syncRoles([$adminRole]);
+
+        $category = Category::factory()->create(['status' => 'active']);
+        $location = $this->locationPayload($category);
+
+        $existing = \App\Models\User::factory()->create([
+            'email' => 'reuse@healernet.org',
+            'mobile' => '+919876543299',
+        ]);
+
+        \Laravel\Sanctum\Sanctum::actingAs($admin);
+        $this->deleteJson("/api/admin/users/{$existing->id}")
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $this->app['auth']->forgetGuards();
+        $this->app['auth']->shouldUse('web');
+
+        $existing->refresh();
+        $this->assertNotNull($existing->deleted_at);
+        $this->assertNotSame('reuse@healernet.org', $existing->email);
+        $this->assertNotSame('+919876543299', $existing->mobile);
+
+        OtpCode::create([
+            'email' => 'reuse@healernet.org',
+            'code' => '1234',
+            'type' => 'email',
+            'expires_at' => now()->addMinutes(5),
+            'used_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/auth/register', array_merge([
+            'name' => 'Reused Account',
+            'email' => 'reuse@healernet.org',
+            'mobile' => '+919876543299',
+            'password' => 'SecurePass123!',
+        ], $location));
+
+        $response->assertCreated()->assertJsonPath('status', 'success');
+        $this->assertDatabaseHas('users', [
+            'email' => 'reuse@healernet.org',
+            'mobile' => '+919876543299',
+            'deleted_at' => null,
+        ]);
+        $this->assertTrue(
+            \App\Models\User::query()->where('email', 'reuse@healernet.org')->exists()
+        );
+        $this->assertTrue(
+            \App\Models\User::onlyTrashed()->where('id', $existing->id)->exists()
+        );
+    }
 }

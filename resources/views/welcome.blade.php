@@ -2,7 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
     <head>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>HealerNet - Global Network for Evidence-Based Healing</title>
 
@@ -24,7 +24,7 @@
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.jsx'])
     </head>
-    <body class="bg-slate-950 text-slate-100 antialiased font-sans">
-        <div id="app"></div>
+    <body class="bg-[#0A221A] text-slate-100 antialiased font-sans overflow-x-hidden min-h-[100dvh]">
+        <div id="app" class="min-h-[100dvh]"></div>
     </body>
 </html>

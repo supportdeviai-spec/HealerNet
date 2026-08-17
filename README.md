@@ -50,7 +50,8 @@ Detailed architecture specifications:
 | **Brand Guidelines** | [brand-guidelines.md](docs/brand-guidelines.md) | Colors, typography, spacing & UI components |
 | **Architecture** | [architecture/](docs/architecture/architecture.md) | System diagrams, clean architecture & SOLID design |
 | **API Endpoints** | [api/](docs/api/authentication-api.md) | REST API reference for Auth, Users, Practitioners & Consultations |
-| **Deployment** | [deployment/](docs/deployment/docker-setup.md) | Docker Compose, AWS EC2/Nginx & Environment configuration |
+| **Deployment** | [deployment/](docs/deployment/docker-setup.md) | Docker Compose, live domain (healernet.org), AWS EC2/Nginx & Environment configuration |
+| **Live server** | [live-server.md](docs/deployment/live-server.md) | DNS, SSL, production Compose, deploys |
 | **Database** | [database/](docs/database/schema-design.md) | Database schema design, migrations & seeders guide |
 
 ---

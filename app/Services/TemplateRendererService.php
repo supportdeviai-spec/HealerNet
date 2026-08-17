@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\EmailTemplate;
+use App\Support\EmailLogo;
 use Illuminate\Support\Str;
 
 class TemplateRendererService
@@ -23,12 +24,12 @@ class TemplateRendererService
         $template = $this->findBySlug($slug);
 
         if (!$template) {
-            return $this->renderFallback($slug, $variables);
+            return $this->renderFallback($slug, $variables, true);
         }
 
         $subject = $this->replaceVariables($template->subject, $variables);
         $innerHtml = $this->formatBody($template->body, $variables, $slug);
-        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug);
+        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug, true);
 
         return [
             'subject' => $subject,
@@ -45,13 +46,13 @@ class TemplateRendererService
         $template = EmailTemplate::query()->where('slug', $slug)->first();
 
         if (!$template && !$subjectOverride && !$bodyOverride) {
-            return $this->renderFallback($slug, $variables);
+            return $this->renderFallback($slug, $variables, false);
         }
 
         $subject = $this->replaceVariables($subjectOverride ?? $template?->subject ?? 'HealerNet', $variables);
         $body = $bodyOverride ?? $template?->body ?? '';
         $innerHtml = $this->formatBody($body, $variables, $slug);
-        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug);
+        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug, false);
 
         return [
             'subject' => $subject,
@@ -108,9 +109,10 @@ class TemplateRendererService
         return $html;
     }
 
-    private function wrapInLayout(string $subject, string $innerHtml, array $variables, string $slug): string
+    private function wrapInLayout(string $subject, string $innerHtml, array $variables, string $slug, bool $forSend = true): string
     {
-        $logoUrl = asset('images/logo.png');
+        $logoUrl = $forSend ? EmailLogo::cidSrc() : EmailLogo::publicUrl();
+        $logoImg = EmailLogo::imgTag($logoUrl);
         $safeSubject = e($subject);
 
         $greeting = '';
@@ -134,7 +136,7 @@ class TemplateRendererService
         <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; margin: 0; padding: 25px 15px; color: #1e293b;">
             <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;">
                 <div style="background: linear-gradient(135deg, #0F382C 0%, #09261E 100%); padding: 35px 25px; text-align: center; border-bottom: 3px solid #D4AF37;">
-                    <img src="{$logoUrl}" alt="HealerNet Logo" style="max-height: 55px; margin-bottom: 10px;" onerror="this.style.display='none'">
+                    {$logoImg}
                     <h2 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">HealerNet</h2>
                     <p style="color: #A3E635; margin: 6px 0 0 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;">Global Network for Evidence-Based Healing</p>
                 </div>
@@ -167,7 +169,7 @@ class TemplateRendererService
         ";
     }
 
-    private function renderFallback(string $slug, array $variables): array
+    private function renderFallback(string $slug, array $variables, bool $forSend = true): array
     {
         $defaults = [
             EmailTemplate::SLUG_OTP => [
@@ -195,7 +197,7 @@ class TemplateRendererService
 
         $subject = $this->replaceVariables($fallback['subject'], $variables);
         $innerHtml = $this->formatBody($fallback['body'], $variables, $slug);
-        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug);
+        $html = $this->wrapInLayout($subject, $innerHtml, $variables, $slug, $forSend);
 
         return [
             'subject' => $subject,

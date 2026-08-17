@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Support\EmailLogo;
+
 class AnnouncementEmailBuilder
 {
     public static function build(string $subject, string $body, ?string $recipientName = null): string
     {
-        $logoUrl = asset('images/logo.png');
+        $logoImg = EmailLogo::imgTag(EmailLogo::cidSrc());
         $safeSubject = e($subject);
         $greeting = $recipientName
             ? '<p style="font-size: 15px; color: #334155; line-height: 1.6; margin-bottom: 16px; text-align: left;">Hello <strong>' . e($recipientName) . '</strong>,</p>'
@@ -31,7 +33,7 @@ class AnnouncementEmailBuilder
         <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; margin: 0; padding: 25px 15px; color: #1e293b;">
             <div style="max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;">
                 <div style="background: linear-gradient(135deg, #0F382C 0%, #09261E 100%); padding: 35px 25px; text-align: center; border-bottom: 3px solid #D4AF37;">
-                    <img src="{$logoUrl}" alt="HealerNet Logo" style="max-height: 55px; margin-bottom: 10px;" onerror="this.style.display='none'">
+                    {$logoImg}
                     <h2 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">HealerNet</h2>
                     <p style="color: #A3E635; margin: 6px 0 0 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;">Global Network for Evidence-Based Healing</p>
                 </div>

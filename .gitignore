@@ -3,6 +3,7 @@
 .env
 .env.backup
 .env.production
+/docker/certbot/conf
 .release_gate_out*.txt
 .migrate_banner.txt
 .banner_debug_run.sh

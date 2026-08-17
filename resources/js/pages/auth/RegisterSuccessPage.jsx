@@ -108,42 +108,39 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#041610] flex items-center justify-center p-3 sm:p-6 lg:p-10 font-sans">
-      {/* Ambient background */}
+    <div className="min-h-[100dvh] bg-[#041610] flex items-start sm:items-center justify-center p-3 sm:p-5 md:p-8 font-sans overflow-x-hidden">
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <img
           src={bannerSrc}
           alt=""
           aria-hidden
-          className="absolute inset-0 w-full h-full object-cover opacity-20 blur-sm scale-105"
+          className="absolute inset-0 w-full h-full object-cover object-top opacity-20 blur-sm scale-105"
           onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[#041610]/95 via-[#0A221A]/90 to-[#061812]/95" />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-[#65A30D]/8 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] max-w-full h-[600px] bg-[#65A30D]/8 rounded-full blur-3xl" />
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#D4AF37]/10 rounded-full blur-3xl" />
       </div>
 
-      {/* Premium card */}
-      <div className="relative w-full max-w-2xl lg:max-w-3xl animate-fadeIn">
-        <div className="rounded-3xl overflow-hidden shadow-[0_32px_80px_-16px_rgba(0,0,0,0.65)] border border-[#D4AF37]/40 bg-[#0A221A]">
-          {/* Card banner header — responsive heights */}
-          <div className="relative h-36 sm:h-48 md:h-52 lg:h-56 overflow-hidden">
+      <div className="relative w-full max-w-xl sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl my-2 sm:my-0 animate-fadeIn min-w-0">
+        <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_32px_80px_-16px_rgba(0,0,0,0.65)] border border-[#D4AF37]/40 bg-[#0A221A]">
+          <div className="relative h-44 sm:h-52 md:h-60 lg:h-72 overflow-hidden">
             <img
               src={bannerSrc}
               alt="HealerNet"
-              sizes="(max-width: 768px) 100vw, 768px"
-              className="absolute inset-0 w-full h-full object-cover object-[center_35%] sm:object-center"
+              sizes="(max-width: 768px) 100vw, 1024px"
+              className="absolute inset-0 w-full h-full object-cover object-top"
               onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A221A] via-[#0A221A]/55 to-[#0F382C]/30" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A221A] via-[#0A221A]/55 to-[#0F382C]/25" />
             <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 md:p-8">
-              <div className="flex items-center gap-2.5 mb-2 sm:mb-3">
+              <div className="flex items-center gap-2.5 mb-2 sm:mb-3 min-w-0">
                 <HealerNetLogo size="sm" showText={false} />
-                <span className="text-sm font-bold text-white tracking-tight">
+                <span className="text-sm font-bold text-white tracking-tight truncate">
                   Healer<span className="text-[#A3E635]">Net</span>
                 </span>
               </div>
-              <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-white leading-tight">
+              <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-white leading-snug break-words">
                 Thank You for Joining{' '}
                 <span className="bg-gradient-to-r from-[#A3E635] to-[#E5C158] bg-clip-text text-transparent">
                   HealerNet
@@ -155,36 +152,34 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
             </div>
           </div>
 
-          {/* Card body */}
-          <div className="p-5 sm:p-7 lg:p-8 space-y-5">
-            {/* Profile */}
+          <div className="p-4 sm:p-7 lg:p-8 space-y-5">
             <div className="space-y-3">
               <div className="text-[10px] font-bold uppercase tracking-widest text-[#E5C158] flex items-center gap-1.5">
                 <User size={12} /> Your Profile
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs p-4 rounded-2xl bg-[#071812]/80 border border-white/5">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-xs p-4 rounded-2xl bg-[#071812]/80 border border-white/5">
+                <div className="min-w-0">
                   <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Name</span>
-                  <span className="font-bold text-white">{userData?.name || '—'}</span>
+                  <span className="font-bold text-white break-words">{userData?.name || '—'}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Email</span>
-                  <span className="font-medium text-slate-300 truncate block">{userData?.email || '—'}</span>
+                  <span className="font-medium text-slate-300 break-all">{userData?.email || '—'}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Category</span>
-                  <span className="font-bold text-[#A3E635]">{categoryName}</span>
+                  <span className="font-bold text-[#A3E635] break-words">{categoryName}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Mobile</span>
                   <span className="font-medium text-slate-300">{userData?.mobile || '—'}</span>
                 </div>
                 {locationLine && (
-                  <div className="col-span-2 pt-2 border-t border-white/5">
+                  <div className="sm:col-span-2 pt-2 border-t border-white/5">
                     <span className="text-slate-500 text-[10px] uppercase font-semibold flex items-center gap-1 mb-1">
                       <MapPin size={10} className="text-[#65A30D]" /> Location
                     </span>
-                    <p className="text-sm font-bold text-white">{locationLine}</p>
+                    <p className="text-sm font-bold text-white break-words">{locationLine}</p>
                   </div>
                 )}
               </div>

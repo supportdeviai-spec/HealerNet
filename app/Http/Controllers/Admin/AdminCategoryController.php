@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class AdminCategoryController extends Controller
 {
@@ -33,11 +34,14 @@ class AdminCategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:categories',
-            'description' => 'required|string',
+            'name' => ['required', 'string', 'max:255', Rule::unique('categories', 'name')->whereNull('deleted_at')],
+            'description' => 'nullable|string',
             'icon' => 'nullable|string|max:50',
             'status' => 'required|in:active,inactive',
         ]);
+
+        $validated['icon'] = $validated['icon'] ?? null;
+        $validated['description'] = $validated['description'] ?? null;
 
         $category = Category::create($validated);
 
@@ -55,11 +59,15 @@ class AdminCategoryController extends Controller
     public function update(Request $request, Category $category): JsonResponse
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:categories,name,' . $category->id,
-            'description' => 'required|string',
+            'name' => ['required', 'string', 'max:255', Rule::unique('categories', 'name')->ignore($category->id)->whereNull('deleted_at')],
+            'description' => 'nullable|string',
             'icon' => 'nullable|string|max:50',
             'status' => 'required|in:active,inactive',
         ]);
+
+        if (array_key_exists('icon', $validated) && $validated['icon'] === '') {
+            $validated['icon'] = null;
+        }
 
         $category->update($validated);
 

@@ -2349,7 +2349,6 @@ function CategoryRow({ t, c, checked, onCheck, onEdit, onDelete, onToggleStatus 
   return (
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
       <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
-      <td className="px-4 py-2.5 text-xl">{c.icon || "🩺"}</td>
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{c.name}</td>
       <td className="px-4 py-2.5 text-sm max-w-xs truncate" style={{ color: t.textMuted }}>{c.description}</td>
       <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{c.whatsapp_groups_count ?? c.community_groups_count ?? 0}</td>
@@ -2501,14 +2500,12 @@ function CategoriesPage({ t, toast }) {
     const columns = [
       { key: "name", label: "Category Name" },
       { key: "description", label: "Description" },
-      { key: "icon", label: "Icon" },
       { key: "groups", label: "Groups" },
       { key: "status", label: "Status" },
     ];
     const exportData = filtered.map((c) => ({
       name: c.name,
-      description: c.description,
-      icon: c.icon || "🩺",
+      description: c.description || "",
       groups: c.community_groups_count ?? 0,
       status: c.status === "paused" ? "Inactive" : (c.status ? c.status.charAt(0).toUpperCase() + c.status.slice(1) : "Active"),
     }));
@@ -2521,8 +2518,7 @@ function CategoriesPage({ t, toast }) {
       const status = (data.status || "active").toLowerCase();
       const payload = {
         name: data.name,
-        description: data.description,
-        icon: data.icon,
+        description: data.description || null,
         status: status === "paused" ? "inactive" : status,
       };
       const res = await apiFetch(
@@ -2532,12 +2528,16 @@ function CategoriesPage({ t, toast }) {
           body: JSON.stringify(payload),
         }
       );
-      if (!res.ok) throw new Error("Save failed");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const firstError = body.errors ? Object.values(body.errors).flat()[0] : null;
+        throw new Error(firstError || body.message || "Save failed");
+      }
       toast(modal.mode === "create" ? "Category created" : "Category updated", "success");
       setModal(null);
       fetchCategories();
-    } catch {
-      toast("Failed to save category", "danger");
+    } catch (err) {
+      toast(err.message || "Failed to save category", "danger");
     }
   };
 
@@ -2561,8 +2561,7 @@ function CategoriesPage({ t, toast }) {
         method: "PUT",
         body: JSON.stringify({
           name: cat.name,
-          description: cat.description,
-          icon: cat.icon,
+          description: cat.description || null,
           status: next,
         }),
       });
@@ -2584,7 +2583,7 @@ function CategoriesPage({ t, toast }) {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("Excel")} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
-          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", cat: { name: "", icon: "🩺", description: "", status: "active" } })}>Add Category</Button>
+          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", cat: { name: "", description: "", status: "active" } })}>Add Category</Button>
         </div>
       </div>
 
@@ -2627,7 +2626,6 @@ function CategoriesPage({ t, toast }) {
                     onChange={toggleAll}
                   />
                 </th>
-                <Th t={t} label="Icon" />
                 <Th t={t} label="Category Name" sortKey="name" sort={sort} onSort={onSort} />
                 <Th t={t} label="Description" />
                 <Th t={t} label="Groups" sortKey="community_groups_count" sort={sort} onSort={onSort} />
@@ -2639,7 +2637,7 @@ function CategoriesPage({ t, toast }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={7} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : pageRows.length > 0 ? (
@@ -2670,7 +2668,7 @@ function CategoriesPage({ t, toast }) {
                   <Button
                     size="sm"
                     icon={Plus}
-                    onClick={() => setModal({ mode: "create", cat: { name: "", icon: "🩺", description: "", status: "active" } })}
+                    onClick={() => setModal({ mode: "create", cat: { name: "", description: "", status: "active" } })}
                   >
                     Add Category
                   </Button>
@@ -2702,10 +2700,7 @@ function CategoryForm({ t, cat, onChange }) {
   const statusValue = normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
   return (
     <div>
-      <div className="grid grid-cols-[64px_1fr] gap-3">
-        <Field t={t} label="Icon"><Input style={inputStyle(t)} value={cat.icon || ""} onChange={(e) => set("icon", e.target.value)} /></Field>
-        <Field t={t} label="Category Name"><Input style={inputStyle(t)} value={cat.name || ""} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Physical Therapy" /></Field>
-      </div>
+      <Field t={t} label="Category Name"><Input style={inputStyle(t)} value={cat.name || ""} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Physical Therapy" /></Field>
       <Field t={t} label="Description"><textarea style={inputStyle(t)} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none" rows={3} value={cat.description || ""} onChange={(e) => set("description", e.target.value)} /></Field>
       <Field t={t} label="Status">
         <Select t={t} value={statusValue} onChange={(e) => set("status", e.target.value.toLowerCase())}>

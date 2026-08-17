@@ -34,7 +34,9 @@ if [ "$1" = "php-fpm" ]; then
     fi
 
     php artisan config:clear --no-interaction || true
-    php artisan cache:clear --no-interaction || true
+    if [ "${APP_ENV:-local}" != "production" ]; then
+        php artisan cache:clear --no-interaction || true
+    fi
 
     echo "[entrypoint] Running migrations (safe — does not delete existing rows)..."
     if ! php artisan migrate --force --no-interaction; then
@@ -61,6 +63,15 @@ if [ "$1" = "php-fpm" ]; then
     USER_COUNT=$(php artisan tinker --execute="echo App\\Models\\User::count();" 2>/dev/null || echo "?")
     echo "[entrypoint] Database ready — users: ${USER_COUNT}, pages: ${PAGE_COUNT}"
     echo "[entrypoint] MySQL data persists in Docker volume: healernet_mysql_data"
+
+    if [ "${APP_ENV:-local}" = "production" ]; then
+        echo "[entrypoint] Caching config, routes, and views..."
+        php artisan config:cache --no-interaction || true
+        php artisan route:cache --no-interaction || true
+        php artisan view:cache --no-interaction || true
+        php artisan event:cache --no-interaction || true
+        rm -f public/hot
+    fi
 fi
 
 exec "$@"

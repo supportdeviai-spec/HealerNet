@@ -90,7 +90,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'full_name' => 'nullable|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users,email',
+            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
             'mobile' => ['nullable', 'string', 'max:16', 'regex:/^(\+91[6-9]\d{9}|[6-9]\d{9}|\+[1-9]\d{6,14})$/'],
             'mobile_number' => ['nullable', 'string', 'max:16', 'regex:/^(\+91[6-9]\d{9}|[6-9]\d{9}|\+[1-9]\d{6,14})$/'],
             'password' => 'nullable|string|min:8|confirmed',
@@ -181,7 +181,7 @@ class AdminUserController extends Controller
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'full_name' => 'nullable|string|max:255',
-            'email' => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
+            'email' => ['nullable', 'string', 'email', 'max:255', User::uniqueEmailRule($user->id)],
             'mobile' => ['nullable', 'string', 'max:16', 'regex:/^(\+91[6-9]\d{9}|[6-9]\d{9}|\+[1-9]\d{6,14})$/'],
             'mobile_number' => ['nullable', 'string', 'max:16', 'regex:/^(\+91[6-9]\d{9}|[6-9]\d{9}|\+[1-9]\d{6,14})$/'],
             'password' => 'nullable|string|min:8|confirmed',

@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\WhatsAppGroup;
 use App\Support\PermissionCatalog;
@@ -58,6 +60,40 @@ class User extends Authenticatable
             'is_verified' => 'boolean',
             'last_login_at' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user) {
+            if ($user->isForceDeleting()) {
+                return;
+            }
+
+            $user->releaseUniqueIdentifiers();
+        });
+    }
+
+    public function releaseUniqueIdentifiers(): void
+    {
+        $stamp = $this->id.'-'.now()->timestamp;
+        $this->forceFill([
+            'email' => "deleted-{$stamp}@deleted.local",
+            'mobile' => $this->mobile ? 'del-'.$stamp : $this->mobile,
+        ])->saveQuietly();
+    }
+
+    public static function uniqueEmailRule(?int $ignoreId = null): Unique
+    {
+        $rule = Rule::unique('users', 'email')->whereNull('deleted_at');
+
+        return $ignoreId ? $rule->ignore($ignoreId) : $rule;
+    }
+
+    public static function uniqueMobileRule(?int $ignoreId = null): Unique
+    {
+        $rule = Rule::unique('users', 'mobile')->whereNull('deleted_at');
+
+        return $ignoreId ? $rule->ignore($ignoreId) : $rule;
     }
 
     public function profile(): HasOne
