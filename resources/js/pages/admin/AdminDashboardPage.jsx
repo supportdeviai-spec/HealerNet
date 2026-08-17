@@ -789,8 +789,8 @@ function Sidebar({ sections, active, onNav, open, setOpen, isDesktop, dark, onLo
       {showAsDrawer && open && <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setOpen(false)} />}
       <aside
         className={cx(
-          "shrink-0 w-[248px] h-screen z-50 transition-transform duration-300 ease-in-out",
-          isDesktop ? "sticky top-0" : "fixed top-0 left-0",
+          "shrink-0 w-[248px] z-50 transition-transform duration-300 ease-in-out",
+          isDesktop ? "h-full" : "fixed top-0 left-0 h-screen",
           visible ? "translate-x-0" : "-translate-x-full"
         )}
         style={{ background: RAIL_T.bg, borderRight: `1px solid ${RAIL_T.border}`, boxShadow: dark ? "none" : "1px 0 0 rgba(15,40,35,0.03)" }}
@@ -992,7 +992,7 @@ const Header = memo(function Header({ t, dark, setDark, sidebarOpen, isDesktop, 
 
   return (
     <header
-      className="sticky top-0 z-30 flex items-center justify-between gap-4 px-4 sm:px-6 h-16 shrink-0 border-b"
+      className="z-30 flex items-center justify-between gap-4 px-4 sm:px-6 h-16 shrink-0 border-b"
       style={{ background: t.surface, borderColor: t.border, transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
     >
       <div className="flex items-center gap-3">
@@ -3969,6 +3969,32 @@ export default function App({ currentView }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const app = document.getElementById("app");
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      appOverflow: app?.style.overflow ?? "",
+      appHeight: app?.style.height ?? "",
+    };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    if (app) {
+      app.style.overflow = "hidden";
+      app.style.height = "100dvh";
+    }
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      if (app) {
+        app.style.overflow = prev.appOverflow;
+        app.style.height = prev.appHeight;
+      }
+    };
+  }, []);
+
   const nav = useCallback((id, payload) => {
     if (!canAccessSection(id)) {
       toast(PERMISSION_DENIED_MESSAGE, "error");
@@ -3988,7 +4014,7 @@ export default function App({ currentView }) {
   const hasAnySectionAccess = allowedNavItems.length > 0;
 
   return (
-    <div style={{ fontFamily: FONT_BODY, background: t.bg, minHeight: "100vh", color: t.text }}>
+    <div className="h-[100dvh] overflow-hidden flex" style={{ fontFamily: FONT_BODY, background: t.bg, color: t.text }}>
       <style>{`
         * { box-sizing: border-box; }
         input, select, textarea, button { font-family: ${FONT_BODY}; }
@@ -3999,12 +4025,12 @@ export default function App({ currentView }) {
         @keyframes hn-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         table { border-collapse: collapse; }
       `}</style>
-      <div className="flex">
         <Sidebar sections={navSections} active={section} onNav={nav} open={sidebarOpen} setOpen={setSidebarOpen} isDesktop={isDesktop} dark={dark} onLogout={logout} />
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
           <Header t={t} dark={dark} setDark={setDark} sidebarOpen={sidebarOpen} isDesktop={isDesktop} onMenu={() => setSidebarOpen(true)} section={section}
             notifOpen={notifOpen} setNotifOpen={setNotifOpen} profileOpen={profileOpen} setProfileOpen={setProfileOpen} onLogout={logout} user={user} onNav={nav} canAccessSection={canAccessSection} />
-          <main className="flex-1 p-4 sm:p-6 max-w-[1400px] w-full mx-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+          <main className="p-4 sm:p-6 max-w-[1400px] w-full mx-auto">
             <div className="mb-4 text-xs md:hidden" style={{ color: t.textFaint }}>Admin / {LABELS[section] || "Panel"}</div>
             {!hasAnySectionAccess && (
               <AccessDeniedPanel
@@ -4094,8 +4120,8 @@ export default function App({ currentView }) {
           <footer className="px-6 py-4 text-xs text-center" style={{ color: t.textFaint, borderTop: `1px solid ${t.border}` }}>
             HealerNet Admin Console · Global Network for Evidence-Based Healing · v1.0
           </footer>
+          </div>
         </div>
-      </div>
       <ToastHost toasts={toasts} remove={removeToast} />
     </div>
   );
