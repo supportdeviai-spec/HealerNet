@@ -63,12 +63,12 @@ class PermissionCatalog
                 ],
             ],
             'cities' => [
-                'label' => 'Cities',
+                'label' => 'Districts',
                 'permissions' => [
-                    'cities.view' => 'View cities',
-                    'cities.create' => 'Create cities',
-                    'cities.edit' => 'Edit cities',
-                    'cities.delete' => 'Delete cities',
+                    'cities.view' => 'View districts',
+                    'cities.create' => 'Create districts',
+                    'cities.edit' => 'Edit districts',
+                    'cities.delete' => 'Delete districts',
                 ],
             ],
             'group_management' => [

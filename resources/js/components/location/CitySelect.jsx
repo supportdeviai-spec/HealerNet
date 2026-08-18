@@ -8,6 +8,7 @@ export default function CitySelect({
   disabled = false,
   label = '',
   placeholder = 'Select City',
+  loadingPlaceholder = 'Loading cities…',
   className = '',
   id = 'city-select',
   selectClassName = 'w-full px-3 py-2.5 rounded-xl bg-white dark:bg-[#071812] border border-[#0F382C]/20 dark:border-[#1E4E3D] text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#65A30D]/50 disabled:cursor-not-allowed disabled:opacity-70',
@@ -28,7 +29,7 @@ export default function CitySelect({
           onChange={onChange}
           disabled={disabled || loading}
         >
-          <option value="">{loading ? 'Loading cities…' : placeholder}</option>
+          <option value="">{loading ? loadingPlaceholder : placeholder}</option>
           {cities.map((city) => (
             <option key={city.id} value={city.id}>
               {city.name}
@@ -45,7 +46,7 @@ export default function CitySelect({
           className={selectClassName}
           style={selectStyle}
         >
-          <option value="">{loading ? 'Loading cities…' : placeholder}</option>
+          <option value="">{loading ? loadingPlaceholder : placeholder}</option>
           {cities.map((city) => (
             <option key={city.id} value={city.id}>
               {city.name}

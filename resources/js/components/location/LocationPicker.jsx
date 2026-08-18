@@ -21,6 +21,8 @@ export default function LocationPicker({
   selectStyle,
   variant = 'auth',
   showLabels = true,
+  cityPlaceholder,
+  cityLoadingPlaceholder,
   t,
 }) {
   const { countries, loading: loadingCountries } = useCountries();
@@ -71,7 +73,8 @@ export default function LocationPicker({
         cities={cities}
         loading={loadingCities}
         disabled={!regionId}
-        placeholder={!regionId ? 'Select state first' : 'Select City'}
+        placeholder={!regionId ? 'Select state first' : (cityPlaceholder || 'Select City')}
+        loadingPlaceholder={cityLoadingPlaceholder}
         {...sharedSelectProps}
       />
     </div>

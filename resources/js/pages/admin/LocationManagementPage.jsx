@@ -41,7 +41,7 @@ import {
 const LOCATION_TABS = [
   { id: 'countries', label: 'Countries', singular: 'Country' },
   { id: 'regions', label: 'States', singular: 'State' },
-  { id: 'cities', label: 'Cities', singular: 'City' },
+  { id: 'cities', label: 'Districts', singular: 'District' },
 ];
 
 const GROUP_TABS = [
@@ -269,6 +269,8 @@ const LocationTabPanel = memo(function LocationTabPanel({
             countryId={ui.filters.countryId}
             regionId={ui.filters.regionId}
             cityId={ui.filters.cityId}
+            cityPlaceholder={!ui.filters.regionId ? 'Select state first' : 'Select District'}
+            cityLoadingPlaceholder="Loading districts…"
             onCountryChange={(value) => onLocationFilterChange({ countryId: value, regionId: '', cityId: '' })}
             onRegionChange={(value) => onLocationFilterChange({ ...ui.filters, regionId: value, cityId: '' })}
             onCityChange={(value) => onLocationFilterChange({ ...ui.filters, cityId: value })}
@@ -294,7 +296,7 @@ const LocationTabPanel = memo(function LocationTabPanel({
                   onChange={onToggleAll}
                 />
               </th>
-              <Th t={t} label={tabId === 'groups' ? 'Group Name' : 'Name'} sortKey="name" sort={panelSort} onSort={onSort} />
+              <Th t={t} label={tabId === 'groups' ? 'Group Name' : tabId === 'cities' ? 'District Name' : 'Name'} sortKey="name" sort={panelSort} onSort={onSort} />
               {tabId === 'groups' && <Th t={t} label="WhatsApp URL" />}
               <Th t={t} label={tabId === 'groups' ? 'Location' : 'Details'} />
               {tabId === 'cities' && <Th t={t} label="WhatsApp Community" />}
@@ -335,7 +337,7 @@ const LocationTabPanel = memo(function LocationTabPanel({
             title={`No ${tabDef.label.toLowerCase()} found`}
             sub={panelTotal === 0
               ? (tabId === 'groups'
-                ? 'No city–community mappings yet. Assign a WhatsApp community from Location Management → Cities.'
+                ? 'No district–community mappings yet. Assign a WhatsApp community from Location Management → Districts.'
                 : 'No location records exist yet. Use "Add" to create one, or run: php artisan db:seed --class=LocationSeeder')
               : (ui.debouncedQuery.trim() || ui.statusFilter !== 'All' || ui.filters.countryId || ui.filters.regionId || ui.filters.cityId)
                 ? 'Try clearing your search or filters to see more results.'
@@ -647,7 +649,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
   const requestDeleteGroup = (item) => {
     if (item.members_count > 0 || item.can_delete === false) {
       toast?.(
-        `Cannot delete: ${item.members_count || 'some'} user(s) in this city are assigned to this WhatsApp community.`,
+        `Cannot delete: ${item.members_count || 'some'} user(s) in this district are assigned to this WhatsApp community.`,
         'error'
       );
       return;
@@ -715,7 +717,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
 
   const openCreate = () => {
     if (isGroupsPage || tab === 'groups') {
-      toast?.('Assign WhatsApp communities from Location Management → Cities.', 'error');
+      toast?.('Assign WhatsApp communities from Location Management → Districts.', 'error');
       return;
     }
     const filters = currentUi.filters;
@@ -762,7 +764,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
     try {
       if (tab === 'groups') {
         if (!form.city_id || !form.whatsapp_group_id) {
-          toast?.('Select a city and WhatsApp group', 'error');
+          toast?.('Select a district and WhatsApp group', 'error');
           return;
         }
       }
@@ -953,7 +955,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
           {tab === 'cities' && (
             <>
               <RegionCityForm form={form} setForm={setForm} t={t} />
-              <Field t={t} label="City Name"><Input style={inputStyle(t)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+              <Field t={t} label="District Name"><Input style={inputStyle(t)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
               <CityWhatsAppCommunityFields form={form} setForm={setForm} t={t} />
             </>
           )}
@@ -1039,8 +1041,8 @@ function GroupDeleteConfirm({ t, open, count, loading, onCancel, onConfirm }) {
         </div>
         <p className="text-sm leading-relaxed mb-7 max-w-[340px] mx-auto" style={{ color: t.textMuted }}>
           {count > 1
-            ? `Remove ${count} city–community mappings. Mappings with assigned users will be blocked.`
-            : 'This removes the city–community mapping. Blocked if any users in this city are assigned to the community.'}
+            ? `Remove ${count} district–community mappings. Mappings with assigned users will be blocked.`
+            : 'This removes the district–community mapping. Blocked if any users in this district are assigned to the community.'}
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
@@ -1153,7 +1155,7 @@ function CityWhatsAppCommunityFields({ form, setForm, t }) {
 
   return (
     <>
-      <Field t={t} label="WhatsApp Community" hint="Optional. Links this city to a WhatsApp community group.">
+      <Field t={t} label="WhatsApp Community" hint="Optional. Links this district to a WhatsApp community group.">
         <Select
           t={t}
           value={form.whatsapp_group_id || ''}
@@ -1305,9 +1307,9 @@ function CommunityGroupMappingForm({ form, setForm, t, excludeMappingId }) {
           {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </Select>
       </Field>
-      <Field t={t} label="City">
+      <Field t={t} label="District">
         <Select t={t} value={form.city_id || ''} onChange={(e) => onCityChange(e.target.value)} disabled={!regionId || loadingCities}>
-          <option value="">{loadingCities ? 'Loading cities…' : 'Select city'}</option>
+          <option value="">{loadingCities ? 'Loading districts…' : 'Select district'}</option>
           {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </Field>
@@ -1319,7 +1321,7 @@ function CommunityGroupMappingForm({ form, setForm, t, excludeMappingId }) {
           disabled={!form.city_id || loadingGroups}
         >
           <option value="">
-            {!form.city_id ? 'Select a city first' : loadingGroups ? 'Loading groups…' : 'Select WhatsApp group'}
+            {!form.city_id ? 'Select a district first' : loadingGroups ? 'Loading groups…' : 'Select WhatsApp group'}
           </option>
           {groupOptions.map((g) => (
             <option
@@ -1341,7 +1343,7 @@ function CommunityGroupMappingForm({ form, setForm, t, excludeMappingId }) {
         )}
         {form.city_id && !loadingGroups && groupOptions.length > 0 && !groupOptions.some((g) => g.selectable || String(g.id) === String(form.whatsapp_group_id)) && (
           <p className="mt-1 text-xs" style={{ color: t.textMuted }}>
-            All active WhatsApp groups are already assigned to this city.
+            All active WhatsApp groups are already assigned to this district.
           </p>
         )}
       </Field>
@@ -1370,9 +1372,9 @@ function GroupCityForm({ form, setForm, t }) {
           {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </Select>
       </Field>
-      <Field t={t} label="City">
+      <Field t={t} label="District">
         <Select t={t} value={form.city_id || ''} onChange={(e) => setForm({ ...form, city_id: e.target.value })}>
-          <option value="">Select city</option>
+          <option value="">Select district</option>
           {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
       </Field>
