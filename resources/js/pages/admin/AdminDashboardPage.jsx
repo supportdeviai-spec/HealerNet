@@ -4116,10 +4116,10 @@ export default function App({ currentView }) {
               </div>
             )}
           </main>
-          <footer className="px-6 py-4 text-xs text-center" style={{ color: t.textFaint, borderTop: `1px solid ${t.border}` }}>
+          </div>
+          <footer className="shrink-0 px-6 py-3.5 text-xs text-center" style={{ color: t.textFaint, background: t.bg, borderTop: `1px solid ${t.border}` }}>
             HealerNet Admin Console · Global Network for Evidence-Based Healing · v1.0
           </footer>
-          </div>
         </div>
       <ToastHost toasts={toasts} remove={removeToast} />
     </div>
