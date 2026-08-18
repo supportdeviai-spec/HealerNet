@@ -7,7 +7,8 @@ import { useCountries } from '../../hooks/useCountries';
 import { CheckCircle2, Loader2, Send } from 'lucide-react';
 
 const LABEL = 'block text-xs font-bold uppercase tracking-wider text-[#0F382C] dark:text-emerald-200 mb-1.5';
-const INPUT = 'w-full h-12 px-4 rounded-xl bg-[#071812] border border-white/20 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#65A30D]/40 focus:border-[#65A30D] transition-all disabled:opacity-60';
+const FIELD = 'h-12 px-4 rounded-xl bg-[#071812] border border-white/20 text-slate-100 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-[#65A30D]/40 focus:border-[#65A30D] transition-all disabled:opacity-60';
+const INPUT = `w-full ${FIELD}`;
 const SELECT = INPUT + ' cursor-pointer';
 const BTN_PRIMARY = 'px-4 py-3 rounded-xl bg-[#0F382C] hover:bg-[#145240] text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 shrink-0 whitespace-nowrap';
 const FIELD_ERROR = 'text-xs text-rose-500 font-medium mt-1.5';
@@ -214,34 +215,34 @@ const PHONE_RULES = {
     length: 10,
     pattern: /^[6-9]\d{9}$/,
     hint: 'Enter a valid 10-digit Indian mobile number (starts with 6, 7, 8, or 9).',
-    placeholder: '9876543210',
   },
   '+1': {
     length: 10,
     pattern: /^\d{10}$/,
     hint: 'Enter a valid 10-digit mobile number.',
-    placeholder: '2025550123',
   },
   '+44': {
     length: 11,
     pattern: /^\d{10,11}$/,
     hint: 'Enter a valid UK mobile number (10–11 digits).',
-    placeholder: '7123456789',
   },
   '+61': {
     length: 9,
     pattern: /^[4-5]\d{8}$/,
     hint: 'Enter a valid 9-digit Australian mobile number.',
-    placeholder: '412345678',
   },
 };
 
+function normalizePhoneCode(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  return digits ? `+${digits}` : '';
+}
+
 function getPhoneRule(phoneCode) {
-  return PHONE_RULES[phoneCode] || {
-    length: 15,
-    pattern: /^\d{6,15}$/,
-    hint: 'Enter a valid mobile number.',
-    placeholder: 'Mobile number',
+  return PHONE_RULES[normalizePhoneCode(phoneCode)] || {
+    length: 10,
+    pattern: /^\d{10}$/,
+    hint: 'Enter a valid 10-digit mobile number.',
   };
 }
 
@@ -314,19 +315,33 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
     fetchCategories();
   }, []);
 
+  const selectedCountry = countries.find((c) => String(c.id) === String(countryId));
+  const syncedPhoneCode = normalizePhoneCode(selectedCountry?.phone_code) || normalizePhoneCode(formData.phoneCode) || '+91';
+  const phoneRule = getPhoneRule(syncedPhoneCode);
+
   useEffect(() => {
     if (!countryId) return;
     const selected = countries.find((c) => String(c.id) === String(countryId));
-    if (selected?.phone_code) {
-      const rule = getPhoneRule(selected.phone_code);
-      setFormData((prev) => ({
+    const nextCode = normalizePhoneCode(selected?.phone_code);
+    if (!nextCode) return;
+
+    const rule = getPhoneRule(nextCode);
+    setFormData((prev) => {
+      const nextNumber = sanitizePhoneDigits(prev.phoneNumber, rule.length);
+      if (prev.phoneCode === nextCode && prev.phoneNumber === nextNumber) {
+        return prev;
+      }
+      return {
         ...prev,
-        phoneCode: selected.phone_code,
-        phoneNumber: sanitizePhoneDigits(prev.phoneNumber, rule.length),
-      }));
-      setPhoneError('');
-    }
+        phoneCode: nextCode,
+        phoneNumber: nextNumber,
+      };
+    });
   }, [countryId, countries]);
+
+  useEffect(() => {
+    setPhoneError('');
+  }, [countryId]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -493,7 +508,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
       return;
     }
 
-    const mobileValidationError = validatePhoneNumber(formData.phoneCode, formData.phoneNumber);
+    const mobileValidationError = validatePhoneNumber(syncedPhoneCode, formData.phoneNumber);
     if (mobileValidationError) {
       setPhoneError(mobileValidationError);
       setFormError(mobileValidationError);
@@ -506,7 +521,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
     }
 
     setSubmitting(true);
-    const fullMobile = `${formData.phoneCode}${formData.phoneNumber.replace(/\D/g, '')}`;
+    const fullMobile = `${syncedPhoneCode}${formData.phoneNumber.replace(/\D/g, '')}`;
 
     let registrationSucceeded = false;
 
@@ -656,7 +671,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
             <input
               id="register-full-name"
               type="text"
-              placeholder="Sarah Jenkins"
+              placeholder="Type here"
               value={formData.name}
               maxLength={MAX_NAME_LENGTH}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -712,7 +727,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           <div className="relative">
             <input
               type="email"
-              placeholder="sarah@healernet.org"
+              placeholder="Type here"
               value={formData.email}
               disabled={otpVerified}
               onChange={(e) => {
@@ -764,7 +779,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           <input
             id="register-business-name"
             type="text"
-            placeholder="Shanti Wellness Center"
+            placeholder="Type here"
             value={formData.businessName}
             maxLength={MAX_BUSINESS_NAME_LENGTH}
             onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
@@ -775,49 +790,43 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
         </div>
 
         <div>
-          <label className={LABEL}>
+          <label className={LABEL} htmlFor="register-mobile">
             Mobile Number <span className="text-rose-500">*</span>
           </label>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <select
-              value={formData.phoneCode}
-              onChange={(e) => {
-                const phoneCode = e.target.value;
-                const rule = getPhoneRule(phoneCode);
-                setFormData((prev) => ({
-                  ...prev,
-                  phoneCode,
-                  phoneNumber: sanitizePhoneDigits(prev.phoneNumber, rule.length),
-                }));
-                setPhoneError('');
-              }}
-              className={`${SELECT} sm:w-40 shrink-0`}
+          <div className="flex w-full min-w-0 items-stretch">
+            <div
+              className="h-12 px-3 shrink-0 rounded-l-xl border border-r-0 border-white/20 bg-[#0a241c] text-slate-100 text-sm font-semibold flex items-center justify-center min-w-[3.75rem] sm:min-w-[4.5rem] select-none pointer-events-none"
+              title="Calling code follows the selected country"
+              aria-hidden="true"
             >
-              <option value="+91">🇮🇳 +91 (IN)</option>
-              <option value="+1">🇺🇸 +1 (US)</option>
-              <option value="+44">🇬🇧 +44 (UK)</option>
-              <option value="+61">🇦🇺 +61 (AU)</option>
-            </select>
+              {syncedPhoneCode}
+            </div>
             <input
+              id="register-mobile"
               type="tel"
               inputMode="numeric"
               autoComplete="tel-national"
-              placeholder={getPhoneRule(formData.phoneCode).placeholder}
+              placeholder="Enter 10 digits"
               value={formData.phoneNumber}
-              maxLength={getPhoneRule(formData.phoneCode).length}
+              maxLength={phoneRule.length}
               onChange={(e) => {
-                const rule = getPhoneRule(formData.phoneCode);
                 setFormData((prev) => ({
                   ...prev,
-                  phoneNumber: sanitizePhoneDigits(e.target.value, rule.length),
+                  phoneNumber: sanitizePhoneDigits(e.target.value, phoneRule.length),
                 }));
                 setPhoneError('');
               }}
-              className={`${INPUT} flex-1 min-w-0`}
+              onBlur={() => {
+                if (!formData.phoneNumber.trim()) return;
+                setPhoneError(validatePhoneNumber(syncedPhoneCode, formData.phoneNumber));
+              }}
+              className={`${FIELD} flex-1 min-w-0 rounded-l-none rounded-r-xl`}
+              aria-label="Mobile number"
+              aria-invalid={Boolean(phoneError)}
               required
             />
           </div>
-          {formData.phoneCode === '+91' && !phoneError && (
+          {syncedPhoneCode === '+91' && !phoneError && (
             <p className="text-[11px] text-slate-500 dark:text-emerald-200/60 mt-1.5">
               10 digits only · must start with 6, 7, 8, or 9
             </p>
