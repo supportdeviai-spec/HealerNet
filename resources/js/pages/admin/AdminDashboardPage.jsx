@@ -2727,9 +2727,6 @@ function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink }) 
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
       <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{g.name}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>
-        {g.current_members ?? g.members_count ?? 0} / {g.max_members ?? 250}
-      </td>
       <td className="px-4 py-2.5 text-xs truncate max-w-[200px]" style={{ color: t.textMuted, fontFamily: FONT_MONO }}>
         {g.whatsapp_url || g.link || "-"}
       </td>
@@ -2996,13 +2993,11 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
   const exportAs = (fmt) => {
     const columns = [
       { key: "name", label: "Group Name" },
-      { key: "members", label: "Members" },
       { key: "link", label: "WhatsApp Link" },
       { key: "status", label: "Status" },
     ];
     const exportData = rows.map((g) => ({
       name: g.name,
-      members: `${g.current_members ?? g.members_count ?? 0} / ${g.max_members ?? 250}`,
       link: g.whatsapp_url || g.link || "-",
       status: g.status ? String(g.status).charAt(0).toUpperCase() + String(g.status).slice(1) : "Active",
     }));
@@ -3020,7 +3015,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("Excel")} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
-          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", max_members: 250, status: "active" } })}>Add Group</Button>
+          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", status: "active" } })}>Add Group</Button>
         </div>
       </div>
 
@@ -3064,7 +3059,6 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   />
                 </th>
                 <Th t={t} label="Group Name" />
-                <Th t={t} label="Members" />
                 <Th t={t} label="WhatsApp Link" />
                 <Th t={t} label="Status" />
                 <ActionsTh t={t} />
@@ -3074,7 +3068,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : rows.length > 0 ? (
@@ -3105,7 +3099,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   <Button
                     size="sm"
                     icon={Plus}
-                    onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", max_members: 250, status: "active" } })}
+                    onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", status: "active" } })}
                   >
                     Add Group
                   </Button>
@@ -3161,7 +3155,6 @@ function GroupForm({ t, group, onChange }) {
         />
       </Field>
       <Field t={t} label="WhatsApp URL"><Input style={inputStyle(t)} value={group.whatsapp_url || group.link || ""} onChange={(e) => set("whatsapp_url", e.target.value)} placeholder="https://chat.whatsapp.com/…" /></Field>
-      <Field t={t} label="Maximum Members"><Input type="number" style={inputStyle(t)} value={group.max_members ?? group.max ?? 250} onChange={(e) => set("max_members", Number(e.target.value))} /></Field>
       <Field t={t} label="Status">
         <Select t={t} value={statusValue} onChange={(e) => set("status", e.target.value.toLowerCase())}>
           <option value="Active">Active</option><option value="Full">Full</option><option value="Inactive">Inactive</option>

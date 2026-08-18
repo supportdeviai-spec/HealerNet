@@ -44,7 +44,7 @@ class AdminCommunityController extends Controller
             'category_id' => 'required|uuid|exists:categories,id',
             'name' => 'required|string|max:255',
             'whatsapp_url' => 'required|url',
-            'max_members' => 'required|integer|min:10|max:1000',
+            'max_members' => 'nullable|integer',
             'status' => 'required|in:active,full,inactive',
         ]);
 
@@ -66,7 +66,7 @@ class AdminCommunityController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'whatsapp_url' => 'required|url',
-            'max_members' => 'required|integer|min:10|max:1000',
+            'max_members' => 'nullable|integer',
             'status' => 'required|in:active,full,inactive',
         ]);
 

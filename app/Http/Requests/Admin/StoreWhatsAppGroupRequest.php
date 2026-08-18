@@ -19,7 +19,7 @@ class StoreWhatsAppGroupRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'whatsapp_url' => ['required', 'url', 'max:2048', 'regex:/^https?:\/\/(chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)/i'],
-            'max_members' => ['required', 'integer', 'min:10', 'max:1000'],
+            'max_members' => ['nullable', 'integer'],
             'status' => ['required', Rule::in(['active', 'full', 'inactive'])],
         ];
     }
