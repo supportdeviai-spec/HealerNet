@@ -97,7 +97,7 @@ class EmailService
     private function buildWelcomeGroupsHtml($groups, string $locationLine, ?string $categoryName = null): string
     {
         if ($groups->isEmpty()) {
-            return "<p style='font-size: 14px; color: #475569; margin-top: 16px;'>No WhatsApp community group is available for your city yet. We will notify you when a group opens.</p>";
+            return "<p style='font-size: 14px; color: #475569; margin-top: 16px;'>No WhatsApp community group is available for your district yet. We will notify you when a group opens.</p>";
         }
 
         $group = $groups->first();

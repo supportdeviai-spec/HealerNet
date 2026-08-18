@@ -29,10 +29,17 @@ class StoreCommunityGroupRequest extends FormRequest
         ];
     }
 
+    public function attributes(): array
+    {
+        return [
+            'city_id' => 'district',
+        ];
+    }
+
     public function messages(): array
     {
         return [
-            'whatsapp_group_id.unique' => 'This WhatsApp group is already assigned to the selected city.',
+            'whatsapp_group_id.unique' => 'This WhatsApp group is already assigned to the selected district.',
         ];
     }
 }

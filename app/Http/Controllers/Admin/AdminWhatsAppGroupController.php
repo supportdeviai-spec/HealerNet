@@ -109,7 +109,7 @@ class AdminWhatsAppGroupController extends Controller
         $citiesCount = $whatsappGroup->cityMappings()->count();
         if ($citiesCount > 0) {
             return $this->errorResponse(
-                "Cannot delete \"{$whatsappGroup->name}\": it is still linked to {$citiesCount} city mapping(s). Remove those links in Group Management first.",
+                "Cannot delete \"{$whatsappGroup->name}\": it is still linked to {$citiesCount} district mapping(s). Remove those links in Group Management first.",
                 [
                     'reason' => 'has_city_mappings',
                     'cities_count' => $citiesCount,

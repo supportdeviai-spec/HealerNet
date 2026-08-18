@@ -25,7 +25,7 @@ class EmailTemplateSeeder extends Seeder
                 'slug' => EmailTemplate::SLUG_WELCOME,
                 'subject' => 'Welcome to HealerNet, {{name}}!',
                 'description' => 'Sent immediately after successful registration.',
-                'body' => "<p>Thank you for joining <strong>HealerNet</strong>. Your account has been created and verified.</p><p><strong>Email:</strong> {{email}}<br><strong>Category:</strong> {{category}}<br><strong>Location:</strong> {{location}}</p><p>Your assigned WhatsApp community group link is included below — join that group to connect with practitioners in your city.</p>",
+                'body' => "<p>Thank you for joining <strong>HealerNet</strong>. Your account has been created and verified.</p><p><strong>Email:</strong> {{email}}<br><strong>Category:</strong> {{category}}<br><strong>Location:</strong> {{location}}</p><p>Your assigned WhatsApp community group link is included below — join that group to connect with practitioners in your district.</p>",
                 'variables' => ['name', 'email', 'category', 'location', 'login_url', 'group_name', 'group_url', 'groups_html'],
                 'is_active' => true,
                 'is_system' => true,

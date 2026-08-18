@@ -210,7 +210,7 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
                     : !fetchingCommunity && !loading
                     ? (linkCount
                       ? `${linkCount} WhatsApp group link${linkCount > 1 ? 's' : ''} ready — tap to join`
-                      : 'No WhatsApp group links are set up for your city yet')
+                      : 'No WhatsApp group links are set up for your district yet')
                     : 'Loading community group links…'}
                 </span>
               </div>
@@ -222,7 +222,7 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
                 regionName={regionName}
                 emptyMessage={groupsError
                   ? 'We could not load your local groups right now. Please try again in a few minutes.'
-                  : 'Local WhatsApp groups for your city are being set up. We\'ll notify you when they\'re ready.'}
+                  : 'Local WhatsApp groups for your district are being set up. We\'ll notify you when they\'re ready.'}
               />
             </div>
 

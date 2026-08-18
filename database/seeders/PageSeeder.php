@@ -13,7 +13,7 @@ class PageSeeder extends Seeder
             [
                 'title' => 'Privacy Policy',
                 'slug' => 'privacy-policy',
-                'content' => "<h1>Privacy Policy</h1><p>Welcome to HealerNet. We prioritize your privacy and are committed to protecting your personal health and community data. This Privacy Policy details how we collect, store, and safeguard your information.</p><h2>1. Data Collection</h2><p>We collect essential user information such as email address, country, state, and city during registration to match you with appropriate regional WhatsApp healing communities.</p><h2>2. Information Protection</h2><p>All data transmitted through HealerNet is encrypted using enterprise-grade security protocols.</p>",
+                'content' => "<h1>Privacy Policy</h1><p>Welcome to HealerNet. We prioritize your privacy and are committed to protecting your personal health and community data. This Privacy Policy details how we collect, store, and safeguard your information.</p><h2>1. Data Collection</h2><p>We collect essential user information such as email address, country, state, and district during registration to match you with appropriate regional WhatsApp healing communities.</p><h2>2. Information Protection</h2><p>All data transmitted through HealerNet is encrypted using enterprise-grade security protocols.</p>",
                 'status' => 'published',
                 'meta_title' => 'Privacy Policy — HealerNet',
                 'meta_description' => 'Official privacy policy for the HealerNet platform and global community network.',

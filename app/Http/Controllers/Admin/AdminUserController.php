@@ -103,7 +103,7 @@ class AdminUserController extends Controller
             'state_id' => 'nullable|exists:regions,id',
             'city_id' => 'nullable|exists:cities,id',
             'status' => 'nullable|string|in:active,pending,suspended,inactive',
-        ]);
+        ], [], ['city_id' => 'district']);
 
         $name = $validated['full_name'] ?? $validated['name'] ?? null;
         if (!$name) {
@@ -194,7 +194,7 @@ class AdminUserController extends Controller
             'region_id' => 'nullable|exists:regions,id',
             'city_id' => 'nullable|exists:cities,id',
             'status' => 'nullable|string|in:active,pending,suspended,inactive',
-        ]);
+        ], [], ['city_id' => 'district']);
 
         if (isset($validated['full_name'])) {
             $validated['name'] = $validated['full_name'];

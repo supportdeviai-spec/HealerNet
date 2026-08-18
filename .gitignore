@@ -11,6 +11,7 @@
 .run_tinker.sh
 debug_seeder.php
 test_mail.php
+tests/Feature/AdminWhatsAppGroupTest.php
 extract_shared.py
 node_extract.cjs
 split_admin.js

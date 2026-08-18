@@ -296,7 +296,7 @@ const LocationTabPanel = memo(function LocationTabPanel({
                   onChange={onToggleAll}
                 />
               </th>
-              <Th t={t} label={tabId === 'groups' ? 'Group Name' : tabId === 'cities' ? 'District Name' : 'Name'} sortKey="name" sort={panelSort} onSort={onSort} />
+              <Th t={t} label={tabId === 'groups' ? 'Group Name' : tabId === 'cities' ? 'District' : 'Name'} sortKey="name" sort={panelSort} onSort={onSort} />
               {tabId === 'groups' && <Th t={t} label="WhatsApp URL" />}
               <Th t={t} label={tabId === 'groups' ? 'Location' : 'Details'} />
               {tabId === 'cities' && <Th t={t} label="WhatsApp Community" />}
@@ -955,7 +955,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
           {tab === 'cities' && (
             <>
               <RegionCityForm form={form} setForm={setForm} t={t} />
-              <Field t={t} label="District Name"><Input style={inputStyle(t)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+              <Field t={t} label="District"><Input style={inputStyle(t)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
               <CityWhatsAppCommunityFields form={form} setForm={setForm} t={t} />
             </>
           )}

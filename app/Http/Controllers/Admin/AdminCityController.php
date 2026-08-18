@@ -28,7 +28,7 @@ class AdminCityController extends Controller
         );
 
         return $this->successResponse(
-            'Cities fetched successfully.',
+            'Districts fetched successfully.',
             $cities->items(),
             [
                 'current_page' => $cities->currentPage(),
@@ -46,7 +46,7 @@ class AdminCityController extends Controller
         $this->syncPrimaryWhatsappGroup($city, $request->input('whatsapp_group_id'));
 
         return $this->successResponse(
-            'City created successfully.',
+            'District created successfully.',
             $city->load(['region.country', 'activeWhatsappGroups']),
             [],
             201
@@ -56,7 +56,7 @@ class AdminCityController extends Controller
     public function show(City $city): JsonResponse
     {
         return $this->successResponse(
-            'City fetched successfully.',
+            'District fetched successfully.',
             $city->load(['region.country', 'activeWhatsappGroups'])
         );
     }
@@ -71,7 +71,7 @@ class AdminCityController extends Controller
         }
 
         return $this->successResponse(
-            'City updated successfully.',
+            'District updated successfully.',
             $city->fresh()->load(['region.country', 'activeWhatsappGroups'])
         );
     }
@@ -87,7 +87,7 @@ class AdminCityController extends Controller
             Status::from($validated['status'])
         );
 
-        return $this->successResponse('City status updated successfully.', $city);
+        return $this->successResponse('District status updated successfully.', $city);
     }
 
     /**

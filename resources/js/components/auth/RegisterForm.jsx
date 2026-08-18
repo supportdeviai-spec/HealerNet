@@ -480,7 +480,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
     }
 
     if (!countryId || !regionId || !cityId) {
-      setFormError('Please select your complete location (Country, State, City).');
+      setFormError('Please select your complete location (Country, State, District).');
       return;
     }
 

@@ -79,6 +79,6 @@ class LocationController extends Controller
             ];
         });
 
-        return $this->successResponse('Cities fetched successfully.', $cities);
+        return $this->successResponse('Districts fetched successfully.', $cities);
     }
 }

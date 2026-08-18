@@ -103,7 +103,7 @@ class AdminCommunityGroupController extends Controller
 
         if ($membersCount > 0) {
             return $this->errorResponse(
-                "Cannot delete: {$membersCount} user(s) in this city are assigned to this WhatsApp community. Unassign or move those users first.",
+                "Cannot delete: {$membersCount} user(s) in this district are assigned to this WhatsApp community. Unassign or move those users first.",
                 ['members_count' => $membersCount],
                 422
             );

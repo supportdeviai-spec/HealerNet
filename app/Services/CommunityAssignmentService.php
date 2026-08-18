@@ -16,7 +16,7 @@ class CommunityAssignmentService
     public function autoAssign(User $user)
     {
         if (!$user->city_id) {
-            return ['success' => false, 'message' => 'User has no city defined.'];
+            return ['success' => false, 'message' => 'User has no district defined.'];
         }
 
         $existing = $user->whatsappGroups()->exists();
@@ -31,7 +31,7 @@ class CommunityAssignmentService
                 $group = $this->findCityWhatsAppGroup($user, forAssignment: true);
 
                 if (!$group) {
-                    throw new \Exception('No active WhatsApp community is mapped to this city.');
+                    throw new \Exception('No active WhatsApp community is mapped to this district.');
                 }
 
                 $user->whatsappGroups()->attach($group->id, ['joined_at' => now()]);

@@ -77,21 +77,25 @@ class AuthController extends Controller
 
     public function register(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required_without:full_name', 'nullable', 'string', 'max:255'],
-            'full_name' => ['required_without:name', 'nullable', 'string', 'max:255'],
-            'title' => ['nullable', 'string', 'max:20', 'in:Mr.,Ms.,Mrs.,Dr.,Prof.,Other'],
-            'business_name' => ['nullable', 'string', 'max:255'],
-            'date_of_birth' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:1900-01-01'],
-            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
-            'password' => ['nullable', 'string', 'min:8'],
-            'mobile' => ['required', 'string', User::uniqueMobileRule()],
-            'category_id' => ['required', 'uuid', 'exists:categories,id'],
-            'country_id' => ['required', 'integer', 'exists:countries,id'],
-            'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],
-            'state_id' => ['required_without:region_id', 'integer', 'exists:regions,id'],
-            'city_id' => ['required', 'integer', 'exists:cities,id'],
-        ]);
+        $validated = $request->validate(
+            [
+                'name' => ['required_without:full_name', 'nullable', 'string', 'max:255'],
+                'full_name' => ['required_without:name', 'nullable', 'string', 'max:255'],
+                'title' => ['nullable', 'string', 'max:20', 'in:Mr.,Ms.,Mrs.,Dr.,Prof.,Other'],
+                'business_name' => ['nullable', 'string', 'max:255'],
+                'date_of_birth' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:1900-01-01'],
+                'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
+                'password' => ['nullable', 'string', 'min:8'],
+                'mobile' => ['required', 'string', User::uniqueMobileRule()],
+                'category_id' => ['required', 'uuid', 'exists:categories,id'],
+                'country_id' => ['required', 'integer', 'exists:countries,id'],
+                'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],
+                'state_id' => ['required_without:region_id', 'integer', 'exists:regions,id'],
+                'city_id' => ['required', 'integer', 'exists:cities,id'],
+            ],
+            [],
+            ['city_id' => 'district']
+        );
 
         $validated['region_id'] = $validated['region_id'] ?? $validated['state_id'];
         unset($validated['state_id']);
@@ -131,7 +135,7 @@ class AuthController extends Controller
         if (!$cityValid) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'The selected city does not belong to the selected region or is inactive.'
+                'message' => 'The selected district does not belong to the selected state or is inactive.'
             ], 422);
         }
 

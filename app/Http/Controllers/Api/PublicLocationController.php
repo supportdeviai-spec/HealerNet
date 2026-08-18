@@ -52,7 +52,7 @@ class PublicLocationController extends Controller
             $request->query('search')
         );
 
-        return $this->successResponse('Cities fetched successfully.', $cities);
+        return $this->successResponse('Districts fetched successfully.', $cities);
     }
 
     public function communityGroups(City $city): JsonResponse
@@ -61,7 +61,7 @@ class PublicLocationController extends Controller
         if ($city->status !== Status::ACTIVE
             || $city->region?->status !== Status::ACTIVE
             || $city->region?->country?->status !== Status::ACTIVE) {
-            return $this->errorResponse('City is not available.', 404);
+            return $this->errorResponse('District is not available.', 404);
         }
 
         $groups = $this->locationService->listCommunityGroupsForPublic($city->id);

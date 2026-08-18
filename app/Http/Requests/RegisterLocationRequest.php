@@ -25,6 +25,13 @@ class RegisterLocationRequest extends FormRequest
         ];
     }
 
+    public function attributes(): array
+    {
+        return [
+            'city_id' => 'district',
+        ];
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {
@@ -56,7 +63,7 @@ class RegisterLocationRequest extends FormRequest
                 ->exists();
 
             if (!$cityValid) {
-                $validator->errors()->add('city_id', 'The selected city does not belong to the selected region or is inactive.');
+                $validator->errors()->add('city_id', 'The selected district does not belong to the selected state or is inactive.');
             }
         });
     }

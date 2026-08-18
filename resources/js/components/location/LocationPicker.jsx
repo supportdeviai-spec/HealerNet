@@ -67,14 +67,14 @@ export default function LocationPicker({
         {...sharedSelectProps}
       />
       <CitySelect
-        label={showLabels && variant === 'auth' ? 'City' : ''}
+        label={showLabels && variant === 'auth' ? 'District' : ''}
         value={cityId}
         onChange={(e) => onCityChange?.(e.target.value)}
         cities={cities}
         loading={loadingCities}
         disabled={!regionId}
-        placeholder={!regionId ? 'Select state first' : (cityPlaceholder || 'Select City')}
-        loadingPlaceholder={cityLoadingPlaceholder}
+        placeholder={!regionId ? 'Select state first' : (cityPlaceholder || 'Select District')}
+        loadingPlaceholder={cityLoadingPlaceholder || 'Loading districts…'}
         {...sharedSelectProps}
       />
     </div>

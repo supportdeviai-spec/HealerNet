@@ -1401,7 +1401,7 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
                 <Th t={t} label="Category" sortKey="category" sort={table.sort} onSort={table.onSort} />
                 <Th t={t} label="Country" />
                 <Th t={t} label="State" />
-                <Th t={t} label="City" />
+                <Th t={t} label="District" />
                 <Th t={t} label="Registered Date" sortKey="registered" sort={table.sort} onSort={table.onSort} />
                 <Th t={t} label="Status" />
               </tr></thead>
@@ -1652,7 +1652,7 @@ function UsersPage({ t, toast }) {
       { key: "category", label: "Category" },
       { key: "country", label: "Country" },
       { key: "state", label: "State" },
-      { key: "city", label: "City" },
+      { key: "city", label: "District" },
       { key: "created_at", label: "Registered Date" },
       { key: "status", label: "Account Status" },
     ];
@@ -1755,7 +1755,7 @@ function UsersPage({ t, toast }) {
                 <Th t={t} label="Category" sortKey="category_id" sort={sort} onSort={onSort} />
                 <Th t={t} label="Country" />
                 <Th t={t} label="State" />
-                <Th t={t} label="City" />
+                <Th t={t} label="District" />
                 <Th t={t} label="Registered Date" sortKey="created_at" sort={sort} onSort={onSort} />
                 <Th t={t} label="Status" />
                 <ActionsTh t={t} />
@@ -2307,10 +2307,10 @@ function UserModal({ t, mode, user, categories = [], onClose, onSuccess, toast }
           {errors.state_id && <div className="text-xs text-red-500 mt-1 font-medium">{errors.state_id}</div>}
         </Field>
 
-        <Field t={t} label="City">
+        <Field t={t} label="District">
           <Select t={t} value={form.city_id} onChange={(e) => set("city_id", e.target.value)} disabled={!form.state_id || loadingCities}>
             <option value="">
-              {!form.state_id ? "Select state first" : loadingCities ? "Loading cities…" : "Optional"}
+              {!form.state_id ? "Select state first" : loadingCities ? "Loading districts…" : "Optional"}
             </option>
             {cities.map((ct) => (
               <option key={ct.id} value={ct.id}>{ct.name}</option>
@@ -2987,7 +2987,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
       mode: "confirm",
       action: "bulk",
       title: "Delete selected groups?",
-      text: `Delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with members or city links (Group Management) will be blocked.`,
+      text: `Delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with members or district links (Group Management) will be blocked.`,
       confirmText: "Yes, delete",
       tone: "danger",
     });
