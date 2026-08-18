@@ -2727,6 +2727,9 @@ function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink }) 
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
       <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{g.name}</td>
+      <td className="px-4 py-2.5 text-sm max-w-[240px] truncate" style={{ color: t.textMuted }} title={g.description || ""}>
+        {g.description || "—"}
+      </td>
       <td className="px-4 py-2.5 text-xs truncate max-w-[200px]" style={{ color: t.textMuted, fontFamily: FONT_MONO }}>
         {g.whatsapp_url || g.link || "-"}
       </td>
@@ -2993,11 +2996,13 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
   const exportAs = (fmt) => {
     const columns = [
       { key: "name", label: "Group Name" },
+      { key: "description", label: "Description" },
       { key: "link", label: "WhatsApp Link" },
       { key: "status", label: "Status" },
     ];
     const exportData = rows.map((g) => ({
       name: g.name,
+      description: g.description || "",
       link: g.whatsapp_url || g.link || "-",
       status: g.status ? String(g.status).charAt(0).toUpperCase() + String(g.status).slice(1) : "Active",
     }));
@@ -3015,7 +3020,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("Excel")} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
-          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", status: "active" } })}>Add Group</Button>
+          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", group: { name: "", description: "", whatsapp_url: "", status: "active" } })}>Add Group</Button>
         </div>
       </div>
 
@@ -3059,6 +3064,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   />
                 </th>
                 <Th t={t} label="Group Name" />
+                <Th t={t} label="Description" />
                 <Th t={t} label="WhatsApp Link" />
                 <Th t={t} label="Status" />
                 <ActionsTh t={t} />
@@ -3068,7 +3074,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : rows.length > 0 ? (
@@ -3099,7 +3105,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   <Button
                     size="sm"
                     icon={Plus}
-                    onClick={() => setModal({ mode: "create", group: { name: "", whatsapp_url: "", status: "active" } })}
+                    onClick={() => setModal({ mode: "create", group: { name: "", description: "", whatsapp_url: "", status: "active" } })}
                   >
                     Add Group
                   </Button>
