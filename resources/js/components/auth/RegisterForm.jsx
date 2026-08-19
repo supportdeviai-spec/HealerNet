@@ -620,7 +620,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
             onCountryChange={handleCountryChange}
             onRegionChange={handleRegionChange}
             onCityChange={handleCityChange}
-            className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+            className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 gap-3"
             selectClassName={SELECT}
           />
 
@@ -856,7 +856,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
         <button
           type="submit"
           disabled={submitting || !otpVerified || !formData.acceptedTerms}
-          className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#0F382C] via-[#145240] to-[#65A30D] hover:from-[#09261E] hover:to-[#558B2F] text-white font-bold text-sm shadow-lg shadow-[#0F382C]/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 px-4 rounded-none bg-gradient-to-r from-[#0F382C] via-[#145240] to-[#65A30D] hover:from-[#09261E] hover:to-[#558B2F] text-white font-bold text-sm shadow-lg shadow-[#0F382C]/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? (<><Loader2 size={16} className="animate-spin" /> Submitting…</>) : 'Submit'}
         </button>

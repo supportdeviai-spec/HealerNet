@@ -8,6 +8,7 @@ use App\Support\BannerPages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -47,7 +48,7 @@ class AdminBannerController extends Controller
             'description' => 'nullable|string',
             'page' => 'required|string|' . BannerPages::validationRule(),
             'is_active' => 'nullable|boolean',
-            'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'image' => 'required|image|mimes:jpg,jpeg,png,webp|max:20480',
         ]);
 
         if ($validator->fails()) {
@@ -114,7 +115,7 @@ class AdminBannerController extends Controller
             'description' => 'nullable|string',
             'page' => 'nullable|string|' . BannerPages::validationRule(),
             'is_active' => 'nullable|boolean',
-            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'image' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:20480',
         ]);
 
         if ($validator->fails()) {
@@ -206,37 +207,40 @@ class AdminBannerController extends Controller
     }
 
     /**
-     * Store on the public disk (writable by the app user). Served via /storage/...
+     * Store on the public disk, then publish under /banner/uploads so nginx/Vite can serve it.
      */
     private function storeBannerImage(UploadedFile $file): string
     {
-        $filename = Str::uuid()->toString() . '.' . strtolower($file->getClientOriginalExtension() ?: 'png');
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'png');
+        if ($extension === 'jpeg') {
+            $extension = 'jpg';
+        }
+        $filename = Str::uuid()->toString() . '.' . $extension;
         $stored = $file->storeAs('banners', $filename, 'public');
 
         if (!$stored || !Storage::disk('public')->exists($stored)) {
             throw new \RuntimeException('Failed to store banner image.');
         }
 
-        // Best-effort mirror into public/banner/uploads for the /banner Vite proxy.
-        // Never fail the request if this directory is not writable (common in Docker).
+        $storagePath = Storage::disk('public')->path($stored);
+        $publicDir = public_path('banner/uploads');
+        $publicPath = $publicDir . DIRECTORY_SEPARATOR . $filename;
+
         try {
-            $publicDir = public_path('banner/uploads');
-            if (!is_dir($publicDir)) {
-                @mkdir($publicDir, 0775, true);
-            }
-            $publicPath = $publicDir . DIRECTORY_SEPARATOR . $filename;
-            $storagePath = Storage::disk('public')->path($stored);
-            if (is_dir($publicDir) && is_writable($publicDir) && is_file($storagePath)) {
-                @copy($storagePath, $publicPath);
-                if (is_file($publicPath)) {
-                    return '/banner/uploads/' . $filename;
-                }
+            File::ensureDirectoryExists($publicDir, 0777);
+            @chmod($publicDir, 0777);
+            if (is_file($storagePath)) {
+                File::copy($storagePath, $publicPath);
+                @chmod($publicPath, 0644);
             }
         } catch (\Throwable) {
-            // Ignore mirror failures — /storage path below still works.
+            // /storage fallback below still works once nginx aliases it.
         }
 
-        // Relative public-disk path → Banner::image_url becomes /storage/banners/...
+        if (is_file($publicPath)) {
+            return '/banner/uploads/' . $filename;
+        }
+
         return $stored;
     }
 

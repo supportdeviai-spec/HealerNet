@@ -118,6 +118,8 @@ class Banner extends Model
         $candidates = [
             public_path($image),
             public_path('storage/' . $image),
+            public_path('banner/' . $image),
+            public_path('banner/uploads/' . basename($image)),
             Storage::disk('public')->path($image),
         ];
 

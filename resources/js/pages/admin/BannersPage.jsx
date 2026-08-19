@@ -23,7 +23,7 @@ import {
   exportToExcel,
   inputStyle,
 } from "../../components/admin/AdminShared";
-import { BANNER_PAGE_LABELS, BANNER_PAGE_OPTIONS, BANNER_RECOMMENDED_SIZES, bannerSizeLabel, bannerSizeParts, resolveBannerSrc } from "../../constants/bannerPages";
+import { BANNER_PAGE_LABELS, BANNER_PAGE_OPTIONS, BANNER_RECOMMENDED_SIZES, BANNER_HIGH_RES_SIZE, bannerSizeLabel, bannerSizeParts, resolveBannerSrc } from "../../constants/bannerPages";
 
 const PAGE_SIZE = 10;
 
@@ -53,7 +53,7 @@ function BannerRow({ t, b, checked, onCheck, onEdit, onDelete, onToggleStatus, o
               key={`${b.id}-${src}`}
               src={src}
               alt={b.title || "Banner"}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               onError={() => setImgFailed(true)}
             />
           ) : (
@@ -65,7 +65,7 @@ function BannerRow({ t, b, checked, onCheck, onEdit, onDelete, onToggleStatus, o
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{b.title || "-"}</td>
       <td className="px-4 py-2.5 text-sm max-w-xs truncate" style={{ color: t.textMuted }}>{b.description || "-"}</td>
       <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>
-        <span className="font-medium" style={{ color: t.text }} title="Recommended upload size">
+        <span className="font-medium" style={{ color: t.text }} title="Required upload size">
           {bannerSizeParts(b).required || "—"}
         </span>
       </td>
@@ -166,6 +166,9 @@ export default function BannersPage({ t, toast }) {
     e.preventDefault();
     setSaving(true);
     try {
+      if (!editingBanner && !imageFile) {
+        throw new Error('Please select a banner image.');
+      }
       const formData = new FormData();
       formData.append("title", title);
       formData.append("description", description);
@@ -177,7 +180,8 @@ export default function BannersPage({ t, toast }) {
       const res = await apiFetch(url, { method: "POST", body: formData });
       const payload = await res.json().catch(() => null);
       if (!res.ok || (payload && payload.status === "error")) {
-        const msg = payload?.message || payload?.errors?.image?.[0] || "Save failed";
+        const firstError = payload?.errors && Object.values(payload.errors).flat()[0];
+        const msg = firstError || payload?.message || (res.status === 413 ? "Image is too large." : "Save failed");
         throw new Error(msg);
       }
 
@@ -325,7 +329,9 @@ export default function BannersPage({ t, toast }) {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <div style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 22, fontWeight: 600, color: t.text }}>Banner Management</div>
-          <div className="text-sm" style={{ color: t.textMuted }}>{banners.length} banners across auth & success pages</div>
+          <div className="text-sm" style={{ color: t.textMuted }}>
+            {banners.length} banners · Auth pages 1080 × 1480 px · Thanks 1600 × 520 px · Logo 512 × 512 px
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
@@ -451,7 +457,11 @@ export default function BannersPage({ t, toast }) {
               </p>
             )}
             <p className="text-xs mt-1.5" style={{ color: t.textMuted }}>
-              Required size: {(BANNER_RECOMMENDED_SIZES[targetPage] || '1080 × 1440')} px (width × height)
+              Required size: {(BANNER_RECOMMENDED_SIZES[targetPage] || '1080 × 1480')} px (width × height).
+              {BANNER_RECOMMENDED_SIZES[targetPage] === '1080 × 1480' && (
+                <> High-res option: {BANNER_HIGH_RES_SIZE} (same 1080:1480 ratio — do not use sizes like 1440 × 1800).</>
+              )}
+              {' '}Shown in full — the image is not cropped or stretched.
             </p>
           </Field>
 
@@ -464,7 +474,7 @@ export default function BannersPage({ t, toast }) {
               style={{ borderColor: t.border, background: t.surfaceAlt }}
             >
               {imagePreview ? (
-                <img src={imagePreview} alt="Preview" className="mx-auto max-h-32 rounded-lg object-cover" />
+                <img src={imagePreview} alt="Preview" className="mx-auto max-h-32 rounded-lg object-contain" />
               ) : (
                 <span className="text-sm flex items-center justify-center gap-2" style={{ color: t.textMuted }}>
                   <Upload size={16} /> Click to select image
@@ -473,8 +483,22 @@ export default function BannersPage({ t, toast }) {
             </button>
           </Field>
 
-          <Field t={t} label="Title"><Input style={inputStyle(t)} value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
-          <Field t={t} label="Description"><textarea style={inputStyle(t)} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
+          <Field t={t} label="Title">
+            <Input style={inputStyle(t)} value={title} onChange={(e) => setTitle(e.target.value)} />
+            {targetPage !== 'logo' && (
+              <p className="text-xs mt-1.5" style={{ color: t.textMuted }}>
+                Shown as the heading on this page. Leave blank to keep the default text.
+              </p>
+            )}
+          </Field>
+          <Field t={t} label="Description">
+            <textarea style={inputStyle(t)} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+            {targetPage !== 'logo' && (
+              <p className="text-xs mt-1.5" style={{ color: t.textMuted }}>
+                Shown as the subtitle on this page. Leave blank to keep the default text.
+              </p>
+            )}
+          </Field>
           <Field t={t} label="Status">
             <Select t={t} value={isActive ? "active" : "inactive"} onChange={(e) => setIsActive(e.target.value === "active")}>
               <option value="active">Active</option>

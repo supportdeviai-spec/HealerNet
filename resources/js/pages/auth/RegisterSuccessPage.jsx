@@ -47,6 +47,7 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   const { groups, loading: fetchingCommunity, error: groupsError } = useCommunityGroups(cityId);
   const [loading, setLoading] = useState(!initialData);
   const [bannerSrc, setBannerSrc] = useState(DEFAULT_BANNER);
+  const [banner, setBanner] = useState(null);
 
   useEffect(() => {
     if (registrationData) {
@@ -61,6 +62,7 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
         if (cancelled) return;
         const data = res.ok ? await res.json() : null;
         if (data?.data?.[0]) {
+          setBanner(data.data[0]);
           setBannerSrc(resolveBannerSrc(data.data[0]) || DEFAULT_BANNER);
         }
       })
@@ -98,6 +100,8 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   const cityName = userData?.city?.name || initialData?.city_name || '';
   const categoryName = userData?.category?.name || initialData?.category_name || 'Healthcare Professional';
   const locationLine = [cityName, regionName, countryName].filter(Boolean).join(', ');
+  const heading = banner?.title?.trim() || null;
+  const lead = banner?.description?.trim() || null;
   const firstName = (userData?.name || 'Member').split(' ')[0];
   const linkCount = communityGroups.filter((g) => g.whatsapp_url || g.whatsapp_link).length;
 
@@ -124,15 +128,15 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
 
       <div className="relative w-full max-w-xl sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl my-2 sm:my-0 animate-fadeIn min-w-0">
         <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_32px_80px_-16px_rgba(0,0,0,0.65)] border border-[#D4AF37]/40 bg-[#0A221A]">
-          <div className="relative h-44 sm:h-52 md:h-60 lg:h-72 overflow-hidden">
+          <div className="relative w-full aspect-[80/26] max-h-72 overflow-hidden bg-[#041610]">
             <img
               src={bannerSrc}
               alt="HealerNet"
               sizes="(max-width: 768px) 100vw, 1024px"
-              className="absolute inset-0 w-full h-full object-cover object-top"
+              className="absolute inset-0 w-full h-full object-contain object-center"
               onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0A221A] via-[#0A221A]/55 to-[#0F382C]/25" />
+            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0A221A] to-transparent pointer-events-none" />
             <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 md:p-8">
               <div className="flex items-center gap-2.5 mb-2 sm:mb-3 min-w-0">
                 <HealerNetLogo size="sm" showText={false} />
@@ -141,13 +145,17 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
                 </span>
               </div>
               <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-white leading-snug break-words">
-                Thank You for Joining{' '}
-                <span className="bg-gradient-to-r from-[#A3E635] to-[#E5C158] bg-clip-text text-transparent">
-                  HealerNet
-                </span>
+                {heading || (
+                  <>
+                    Thank You for Joining{' '}
+                    <span className="bg-gradient-to-r from-[#A3E635] to-[#E5C158] bg-clip-text text-transparent">
+                      HealerNet
+                    </span>
+                  </>
+                )}
               </h1>
               <p className="mt-1.5 text-xs sm:text-sm text-emerald-100/85 max-w-lg leading-relaxed">
-                Welcome, {firstName}! You&apos;re now part of our global evidence-based healing community.
+                {lead || `Welcome, ${firstName}! You're now part of our global evidence-based healing community.`}
               </p>
             </div>
           </div>

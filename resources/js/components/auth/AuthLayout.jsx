@@ -87,6 +87,8 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
 
   const showDynamicBanner = !imgError && Boolean(absoluteBannerSrc) && page !== 'logo';
   const isRegister = page === 'registration';
+  const heading = banner?.title?.trim() || title;
+  const lead = banner?.description?.trim() || subtitle;
 
   return (
     <div
@@ -95,13 +97,13 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
       }`}
     >
       <div
-        className={`w-full rounded-2xl sm:rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-[#0A221A] border border-white/10 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.7)] ${
+        className={`w-full min-w-0 rounded-none overflow-hidden grid grid-cols-1 min-[1024px]:max-[1279px]:grid-cols-[60%_40%] min-[1024px]:max-[1279px]:grid-rows-1 min-[1024px]:max-[1279px]:items-stretch xl:grid-cols-12 xl:items-stretch bg-[#0A221A] border border-white/10 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.7)] ${
           isRegister
-            ? 'max-w-6xl'
-            : 'max-w-[1360px] lg:h-[calc(100dvh-2.5rem)] lg:min-h-[560px]'
+            ? 'max-w-7xl'
+            : 'max-w-[1440px] lg:min-h-[calc(100dvh-2.5rem)]'
         }`}
       >
-        <aside className="relative bg-[#041610] h-[210px] sm:h-[250px] lg:h-auto lg:min-h-full lg:col-span-5 overflow-hidden">
+        <aside className="relative w-full min-w-0 overflow-hidden bg-[#041610] self-stretch min-[1024px]:max-[1279px]:h-full xl:col-span-6">
           {showDynamicBanner ? (
             <>
               {loadingBanner && (
@@ -111,16 +113,19 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
                 key={absoluteBannerSrc}
                 src={absoluteBannerSrc}
                 alt={banner?.title || 'HealerNet banner'}
-                sizes="(max-width: 1023px) 100vw, 42vw"
-                className="absolute inset-0 w-full h-full object-cover object-top"
+                width={1080}
+                height={1480}
+                sizes="(max-width: 1023px) 100vw, (max-width: 1279px) 60vw, 50vw"
+                className="block w-full h-auto lg:absolute lg:inset-0 lg:h-full lg:w-full lg:max-w-none lg:object-cover"
+                style={{ objectPosition: '53% center' }}
                 onError={() => setImgError(true)}
               />
               {bannersList.length > 1 && (
-                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/50 backdrop-blur-md border border-white/20">
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-black/50 backdrop-blur-md border border-white/20">
                   {bannersList.map((_, i) => (
                     <span
                       key={i}
-                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                      className={`h-1.5 transition-all duration-300 ${
                         i === bannerIndex ? 'w-5 bg-[#E5C158]' : 'w-1.5 bg-white/40'
                       }`}
                     />
@@ -129,7 +134,7 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
               )}
             </>
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-8 bg-gradient-to-b from-[#0B2E24] to-[#041610]">
+            <div className="flex flex-col items-center justify-center p-8 bg-gradient-to-b from-[#0B2E24] to-[#041610] w-full aspect-[1080/1480] lg:absolute lg:inset-0 lg:aspect-auto">
               <HealerNetLogo size="lg" showText={false} />
               <p className="mt-4 text-sm text-emerald-100/80 text-center max-w-xs hidden lg:block">
                 Global Network for Evidence-Based Healing
@@ -138,15 +143,17 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
           )}
         </aside>
 
-        <section className={`min-w-0 bg-[#0B1A14] lg:col-span-7 flex flex-col p-5 sm:p-7 lg:p-8 ${isRegister ? '' : 'lg:justify-center xl:p-10'}`}>
+        <section className={`min-w-0 bg-[#0B1A14] xl:col-span-6 flex flex-col self-stretch p-5 sm:p-7 lg:p-8 lg:pb-5 min-[1024px]:max-[1279px]:h-full ${isRegister ? '' : 'lg:justify-center xl:p-10'}`}>
           <div className={`w-full min-w-0 ${isRegister ? 'max-w-2xl' : 'max-w-[400px] lg:mx-auto'}`}>
             <div className="mb-6 lg:mb-7">
               <h2 className="text-2xl sm:text-[1.75rem] font-extrabold text-white tracking-tight leading-snug">
-                {title}
+                {heading}
               </h2>
-              <p className="mt-2 text-sm text-emerald-200/70 leading-relaxed">
-                {subtitle}
-              </p>
+              {lead ? (
+                <p className="mt-2 text-sm text-emerald-200/70 leading-relaxed">
+                  {lead}
+                </p>
+              ) : null}
             </div>
             {children}
           </div>

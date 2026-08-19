@@ -69,7 +69,7 @@ class BannerPages
         return match ($normalized) {
             self::LOGO => '512 × 512',
             self::THANKS => '1600 × 520',
-            default => '1080 × 1440',
+            default => '1080 × 1480',
         };
     }
 }
