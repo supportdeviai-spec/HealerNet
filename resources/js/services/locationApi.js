@@ -155,4 +155,42 @@ export const locationApi = {
   adminDeleteWhatsAppGroup(id) {
     return apiFetch(`/admin/whatsapp-groups/${id}`, { method: 'DELETE' }).then(parseJson);
   },
+
+  adminPreviewWhatsAppCommunityImport(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiFetch('/admin/whatsapp-community-imports/preview', {
+      method: 'POST',
+      body: formData,
+    }).then(parseJson);
+  },
+
+  adminConfirmWhatsAppCommunityImport(importToken) {
+    return apiFetch('/admin/whatsapp-community-imports/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ import_token: importToken }),
+    }).then(parseJson);
+  },
+
+  adminListWhatsAppCommunityImports() {
+    return apiFetch('/admin/whatsapp-community-imports').then(parseJson);
+  },
+
+  async adminDownloadWhatsAppImportTemplate() {
+    const res = await apiFetch('/admin/whatsapp-community-imports/template');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || 'Failed to download template');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'HealerNet_WhatsApp_Community_Import_Template.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
 };

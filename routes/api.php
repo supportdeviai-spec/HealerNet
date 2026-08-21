@@ -24,6 +24,7 @@ use App\Http\Controllers\BannerController;
 use App\Http\Controllers\Admin\AdminBannerController;
 use App\Http\Controllers\Admin\AdminCityController;
 use App\Http\Controllers\Admin\AdminCommunityGroupController;
+use App\Http\Controllers\Admin\AdminWhatsAppCommunityImportController;
 use App\Http\Controllers\Admin\AdminWhatsAppGroupController;
 use App\Http\Controllers\Admin\AdminCountryController;
 use App\Http\Controllers\Admin\AdminRegionController;
@@ -149,6 +150,11 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::put('/whatsapp-groups/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'update'])->middleware('permission:whatsapp-groups.edit');
     Route::delete('/communities/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'destroy'])->middleware('permission:whatsapp-groups.delete');
     Route::delete('/whatsapp-groups/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'destroy'])->middleware('permission:whatsapp-groups.delete');
+
+    Route::get('/whatsapp-community-imports/template', [AdminWhatsAppCommunityImportController::class, 'template']);
+    Route::get('/whatsapp-community-imports', [AdminWhatsAppCommunityImportController::class, 'history']);
+    Route::post('/whatsapp-community-imports/preview', [AdminWhatsAppCommunityImportController::class, 'preview']);
+    Route::post('/whatsapp-community-imports/confirm', [AdminWhatsAppCommunityImportController::class, 'confirm']);
 
     Route::middleware('permission:cms.view')->get('/pages', [AdminPageController::class, 'index']);
     Route::middleware('permission:cms.view')->get('/pages/{page}', [AdminPageController::class, 'show']);

@@ -43,6 +43,8 @@ export function usePermissions() {
 
   const canAny = useCallback((...perms) => perms.some((p) => can(p)), [can]);
 
+  const canAll = useCallback((perms) => (perms || []).every((p) => can(p)), [can]);
+
   const canAccessSection = useCallback((sectionId) => {
     const required = NAV_PERMISSIONS[sectionId];
     return !required || can(required);
@@ -65,6 +67,7 @@ export function usePermissions() {
     permissions: permissions || [],
     can,
     canAny,
+    canAll,
     canAccessSection,
     filterNavItems,
     firstAllowedSection,

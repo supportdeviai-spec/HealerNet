@@ -37,6 +37,7 @@ import {
   BRAND,
   inputStyle,
 } from '../../components/admin/AdminShared';
+import { WhatsAppCommunityImportButton } from '../../components/admin/WhatsAppCommunityImportModal';
 
 const LOCATION_TABS = [
   { id: 'countries', label: 'Countries', singular: 'Country' },
@@ -830,9 +831,19 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs('CSV')} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs('Excel')} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
           {!isGroupsPage && (
-            <Button size="sm" icon={Plus} onClick={openCreate}>
-              Add {activeTab?.singular || 'Item'}
-            </Button>
+            <>
+              <WhatsAppCommunityImportButton
+                t={t}
+                toast={toast}
+                onImported={() => {
+                  ['countries', 'regions', 'cities', 'groups'].forEach((tabId) => clearTabFetchCache(tabId));
+                  loadItemsForTab(tab, undefined, { background: true });
+                }}
+              />
+              <Button size="sm" icon={Plus} onClick={openCreate}>
+                Add {activeTab?.singular || 'Item'}
+              </Button>
+            </>
           )}
         </div>
       </div>
