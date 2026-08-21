@@ -73,6 +73,19 @@ return [
             'after_commit' => false,
         ],
 
+        /*
+         * Long-running WhatsApp Community imports. Isolated from the default
+         * Redis queue so email/notification jobs keep their existing retry_after.
+         */
+        'redis_imports' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('WHATSAPP_IMPORT_QUEUE', 'whatsapp-imports'),
+            'retry_after' => (int) env('WHATSAPP_IMPORT_RETRY_AFTER', 10800),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

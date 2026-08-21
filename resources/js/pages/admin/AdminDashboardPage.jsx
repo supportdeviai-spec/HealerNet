@@ -2882,15 +2882,14 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
   };
 
   const remove = (id, name = "this group", group = null) => {
-    const members = Number(group?.members_count ?? group?.current_members ?? 0);
+    const members = Number(group?.members_count ?? 0);
+    const mappings = Number(group?.city_mappings_count ?? 0);
     setConfirmDelete({
       mode: "confirm",
       action: "single",
       id,
-      title: "Delete WhatsApp group?",
-      text: members > 0
-        ? `Delete "${name}"?\n\nThis group currently has ${members} member(s).\nDelete will be blocked until members are unassigned.`
-        : `Delete "${name}"?\n\nThis cannot be undone.\nDelete is blocked if members are assigned or the group is linked to cities (Group Management).`,
+      title: "Permanently delete this WhatsApp group?",
+      text: `Are you sure you want to permanently delete this item?\n\nMembers: ${members}\nLocation mappings: ${mappings}\n\nThis cannot be undone.${mappings > 0 ? "\nRemove location mappings in Group Management first if delete is blocked." : ""}`,
       confirmText: "Yes, delete",
       tone: "danger",
     });
@@ -2987,7 +2986,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
       mode: "confirm",
       action: "bulk",
       title: "Delete selected groups?",
-      text: `Delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with members or district links (Group Management) will be blocked.`,
+      text: `Are you sure you want to permanently delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with members or district links (Group Management) will be blocked.`,
       confirmText: "Yes, delete",
       tone: "danger",
     });

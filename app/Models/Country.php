@@ -23,6 +23,11 @@ class Country extends Model
         return $this->hasMany(Region::class);
     }
 
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
+    }
+
     /** @deprecated Use regions() */
     public function states(): HasMany
     {

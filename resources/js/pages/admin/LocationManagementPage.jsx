@@ -151,13 +151,13 @@ const LocationRow = memo(function LocationRow({ t, item, tab, detail, checked, o
             {isActive
               ? <MenuItem t={t} icon={UserX} label="Inactive" onClick={() => { onToggleStatus(); setOpen(false); }} />
               : <MenuItem t={t} icon={UserCheck} label="Activate" onClick={() => { onToggleStatus(); setOpen(false); }} />}
-            {tab === 'groups' && onDelete && (
+            {onDelete && (
               <>
                 <div className="border-t" style={{ borderColor: t.border }} />
                 <MenuItem
                   t={t}
                   icon={Trash2}
-                  label={canDelete ? 'Delete' : 'Delete (in use)'}
+                  label={tab === 'groups' && !canDelete ? 'Delete (in use)' : 'Delete'}
                   danger
                   onClick={() => {
                     setOpen(false);
@@ -232,7 +232,7 @@ const LocationTabPanel = memo(function LocationTabPanel({
           <>
             {panelSelected.size > 0 && (
               <Button size="sm" variant="danger" icon={Trash2} onClick={onBulkDelete}>
-                {tabId === 'groups' ? `Delete (${panelSelected.size})` : `Deactivate (${panelSelected.size})`}
+                Delete ({panelSelected.size})
               </Button>
             )}
             <Select
@@ -611,40 +611,33 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
     }
   };
 
-  const bulkDelete = async (tabId) => {
+  const bulkDelete = (tabId) => {
+    const items = tabData[tabId]?.items || [];
+    const selected = selectedByTab[tabId];
+    const selectedItems = items.filter((i) => selected.has(selKey(i.id)));
+    if (!selectedItems.length) return;
+
     if (tabId === 'groups') {
-      const items = tabData[tabId]?.items || [];
-      const selected = selectedByTab[tabId];
-      const selectedItems = items.filter((i) => selected.has(selKey(i.id)));
-      if (!selectedItems.length) return;
-      setConfirmDelete({ mode: 'bulk', items: selectedItems });
+      setConfirmDelete({ kind: 'mapping', mode: 'bulk', items: selectedItems });
       return;
     }
 
-    const items = tabData[tabId]?.items || [];
-    const selected = selectedByTab[tabId];
-    let updated = 0;
-    for (const id of selected) {
-      const item = items.find((i) => selKey(i.id) === id);
-      if (!item || item.status !== 'active') continue;
-      try {
-        if (tabId === 'countries') await locationApi.adminToggleCountryStatus(item.id, 'inactive');
-        else if (tabId === 'regions') await locationApi.adminToggleRegionStatus(item.id, 'inactive');
-        else if (tabId === 'cities') await locationApi.adminToggleCityStatus(item.id, 'inactive');
-        updated++;
-      } catch {
-        /* skip failed rows */
-      }
-    }
-    toast?.(
-      updated
-        ? `${updated} marked inactive — existing user registrations are safe`
-        : 'No active items selected',
-      updated ? 'success' : 'error'
-    );
-    setSelectedForTab(tabId, new Set());
-    invalidateTabCache(tabId);
-    loadItemsForTab(tabId, undefined, { background: true });
+    const noun = locationNoun(tabId);
+    const plural = selectedItems.length === 1 ? noun : `${noun === 'country' ? 'countries' : `${noun}s`}`;
+    setConfirmDelete({
+      kind: 'location',
+      tab: tabId,
+      items: selectedItems,
+      title: `Permanently delete ${selectedItems.length} ${plural}?`,
+      text: [
+        'Are you sure you want to permanently delete the selected item(s)?',
+        '',
+        'Delete only happens if there are no registered users, no WhatsApp mappings, and no child locations.',
+        'Items still in use will be skipped and you will see the exact reason.',
+        '',
+        'This cannot be undone.',
+      ].join('\n'),
+    });
   };
 
   const requestDeleteGroup = (item) => {
@@ -655,7 +648,89 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       );
       return;
     }
-    setConfirmDelete({ mode: 'single', items: [item] });
+    setConfirmDelete({ kind: 'mapping', mode: 'single', items: [item] });
+  };
+
+  const locationNoun = (tabId) => {
+    if (tabId === 'countries') return 'country';
+    if (tabId === 'regions') return 'state';
+    return 'district';
+  };
+
+  const locationDeleteSummary = (tabId, item) => {
+    const lines = ['Are you sure you want to permanently delete this item?', ''];
+    if (tabId === 'countries') {
+      lines.push(`States: ${item.regions_count ?? 0}`, `Users: ${item.users_count ?? 0}`, '');
+    } else if (tabId === 'regions') {
+      lines.push(`Districts: ${item.cities_count ?? 0}`, `Users: ${item.users_count ?? 0}`, '');
+    } else if (tabId === 'cities') {
+      lines.push(
+        `Registered users: ${item.users_count ?? 0}`,
+        `WhatsApp mappings: ${item.city_whatsapp_groups_count ?? 0}`,
+        '',
+      );
+    }
+    lines.push('This cannot be undone. Delete is blocked if users, child locations, or WhatsApp mappings still exist.');
+    return lines.join('\n');
+  };
+
+  const requestDeleteLocation = (item) => {
+    const noun = locationNoun(tab);
+    setConfirmDelete({
+      kind: 'location',
+      tab,
+      items: [item],
+      title: `Permanently delete this ${noun}?`,
+      text: locationDeleteSummary(tab, item),
+    });
+  };
+
+  const deleteLocationItem = (tabId, item) => {
+    if (tabId === 'countries') return locationApi.adminDeleteCountry(item.id);
+    if (tabId === 'regions') return locationApi.adminDeleteRegion(item.id);
+    return locationApi.adminDeleteCity(item.id);
+  };
+
+  const confirmDeleteLocations = async () => {
+    const items = confirmDelete?.items || [];
+    const tabId = confirmDelete?.tab;
+    if (!items.length || !tabId) return;
+    setDeleting(true);
+    let deleted = 0;
+    const blocked = [];
+    try {
+      for (const item of items) {
+        try {
+          await deleteLocationItem(tabId, item);
+          deleted++;
+        } catch (err) {
+          blocked.push(`${item.name || 'Item'}: ${err?.message || 'Cannot delete'}`);
+        }
+      }
+      if (deleted && !blocked.length) {
+        toast?.(`${deleted} deleted`, 'success');
+      } else if (deleted && blocked.length) {
+        toast?.(
+          `${deleted} deleted, ${blocked.length} blocked.\n${blocked.slice(0, 3).join('\n')}${blocked.length > 3 ? '\n…' : ''}`,
+          'error',
+        );
+      } else {
+        toast?.(blocked[0] || 'Cannot delete items that are still in use', 'error');
+      }
+      setConfirmDelete(null);
+      setSelectedForTab(tabId, new Set());
+      clearTabFetchCache(tabId);
+      if (tabId === 'countries') {
+        clearTabFetchCache('regions');
+        clearTabFetchCache('cities');
+      }
+      if (tabId === 'regions') {
+        clearTabFetchCache('cities');
+      }
+      loadItemsForTab(tabId, undefined, { background: true });
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const confirmDeleteGroups = async () => {
@@ -688,6 +763,14 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
     } finally {
       setDeleting(false);
     }
+  };
+
+  const confirmPendingDelete = async () => {
+    if (confirmDelete?.kind === 'location') {
+      await confirmDeleteLocations();
+      return;
+    }
+    await confirmDeleteGroups();
   };
 
   const exportAs = (fmt) => {
@@ -752,6 +835,8 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       || null;
     setForm({
       ...item,
+      name: item.name || '',
+      status: String(item.status?.value || item.status || 'active').toLowerCase(),
       whatsapp_group_id: item.whatsapp_group_id || linkedGroup?.id || item.whatsapp_group?.id || '',
       whatsapp_url: item.whatsapp_url || linkedGroup?.whatsapp_url || item.whatsapp_group?.whatsapp_url || '',
       country_id: item.region?.country?.id ?? item.city?.region?.country?.id ?? item.country_id ?? filters.countryId ?? '',
@@ -772,16 +857,22 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       if (tab === 'countries') await locationApi.adminSaveCountry(form, modal.mode === 'edit' ? modal.id : null);
       if (tab === 'regions') await locationApi.adminSaveRegion(form, modal.mode === 'edit' ? modal.id : null);
       if (tab === 'cities') {
-        const cityRes = await locationApi.adminSaveCity(
-          {
-            region_id: form.region_id,
-            name: form.name,
-            status: form.status || 'active',
-            whatsapp_group_id: form.whatsapp_group_id || null,
-          },
-          modal.mode === 'edit' ? modal.id : null
-        );
-        void cityRes;
+        const regionId = Number(form.region_id);
+        if (!regionId) {
+          toast?.('Select a state before saving this district', 'error');
+          return;
+        }
+        if (!String(form.name || '').trim()) {
+          toast?.('District name is required', 'error');
+          return;
+        }
+        const payload = {
+          region_id: regionId,
+          name: String(form.name).trim(),
+          status: String(form.status?.value || form.status || 'active').toLowerCase(),
+          whatsapp_group_id: form.whatsapp_group_id || null,
+        };
+        await locationApi.adminSaveCity(payload, modal.mode === 'edit' ? modal.id : null);
       }
       if (tab === 'groups') {
         const payload = {
@@ -793,9 +884,9 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       }
       toast?.('Saved successfully', 'success');
       setModal(null);
-      invalidateTabCache(tab);
-      if (tab === 'cities' && form.whatsapp_group_id) {
-        invalidateTabCache('groups');
+      clearTabFetchCache(tab);
+      if (tab === 'cities') {
+        clearTabFetchCache('groups');
       }
       loadItemsForTab(tab, undefined, { background: true });
     } catch (e) {
@@ -913,7 +1004,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
               onPageChange={(value) => updateUi(tabId, { page: value })}
               detailFor={detailFor}
               allowCreate={!isGroupsPage}
-              onDelete={tabId === 'groups' ? requestDeleteGroup : undefined}
+              onDelete={tabId === 'groups' ? requestDeleteGroup : requestDeleteLocation}
               onOpenCommunity={(community) => {
                 if (!onNav) return;
                 onNav('communities', {
@@ -991,7 +1082,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
           )}
 
           <Field t={t} label="Status">
-            <Select t={t} value={form.status || 'active'} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+            <Select t={t} value={String(form.status || 'active').toLowerCase()} onChange={(e) => setForm({ ...form, status: e.target.value })}>
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </Select>
@@ -1002,16 +1093,18 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       <GroupDeleteConfirm
         t={t}
         open={!!confirmDelete}
+        title={confirmDelete?.title}
+        text={confirmDelete?.text}
         count={confirmDelete?.items?.length || 0}
         loading={deleting}
         onCancel={() => !deleting && setConfirmDelete(null)}
-        onConfirm={confirmDeleteGroups}
+        onConfirm={confirmPendingDelete}
       />
     </div>
   );
 }
 
-function GroupDeleteConfirm({ t, open, count, loading, onCancel, onConfirm }) {
+function GroupDeleteConfirm({ t, open, title, text, count, loading, onCancel, onConfirm }) {
   const [hoverCancel, setHoverCancel] = useState(false);
   const [hoverConfirm, setHoverConfirm] = useState(false);
 
@@ -1023,6 +1116,10 @@ function GroupDeleteConfirm({ t, open, count, loading, onCancel, onConfirm }) {
   }, [open]);
 
   if (!open) return null;
+  const heading = title || `Delete group mapping${count > 1 ? 's' : ''}?`;
+  const body = text || (count > 1
+    ? `Remove ${count} district–community mappings. Mappings with assigned users will be blocked.`
+    : 'This removes the district–community mapping. Blocked if any users in this district are assigned to the community.');
   return (
     <div
       className="fixed inset-0 z-[120] flex items-center justify-center p-4"
@@ -1048,12 +1145,10 @@ function GroupDeleteConfirm({ t, open, count, loading, onCancel, onConfirm }) {
           <AlertTriangle size={30} strokeWidth={2.25} />
         </div>
         <div className="mb-2 font-semibold tracking-tight" style={{ fontFamily: FONT_DISPLAY, fontSize: 22, color: t.text }}>
-          Delete group mapping{count > 1 ? 's' : ''}?
+          {heading}
         </div>
-        <p className="text-sm leading-relaxed mb-7 max-w-[340px] mx-auto" style={{ color: t.textMuted }}>
-          {count > 1
-            ? `Remove ${count} district–community mappings. Mappings with assigned users will be blocked.`
-            : 'This removes the district–community mapping. Blocked if any users in this district are assigned to the community.'}
+        <p className="text-sm leading-relaxed mb-7 max-w-[340px] mx-auto whitespace-pre-line" style={{ color: t.textMuted }}>
+          {body}
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
@@ -1097,16 +1192,53 @@ function GroupDeleteConfirm({ t, open, count, loading, onCancel, onConfirm }) {
 }
 
 function RegionCityForm({ form, setForm, t }) {
-  const { countries } = useCountries();
-  const [countryId, setCountryId] = useState(form.country_id || '');
-  const { regions } = useRegions(countryId);
+  const [countries, setCountries] = useState([]);
+  const [regions, setRegions] = useState([]);
+  const countryId = form.country_id || '';
 
   useEffect(() => {
-    setCountryId(form.country_id || '');
-  }, [form.country_id]);
+    let cancelled = false;
+    locationApi.adminListCountries({ per_page: 1000 })
+      .then((res) => {
+        if (cancelled) return;
+        const items = Array.isArray(res.data) ? res.data : [];
+        const current = form.region?.country;
+        if (current && !items.some((c) => String(c.id) === String(current.id))) {
+          items.unshift(current);
+        }
+        setCountries(items);
+      })
+      .catch(() => {
+        if (!cancelled) setCountries(form.region?.country ? [form.region.country] : []);
+      });
+    return () => { cancelled = true; };
+  }, [form.region?.country]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!countryId) {
+      setRegions([]);
+      return undefined;
+    }
+    locationApi.adminListRegions({ country_id: countryId, per_page: 1000 })
+      .then((res) => {
+        if (cancelled) return;
+        const items = Array.isArray(res.data) ? res.data : [];
+        const current = form.region;
+        if (current && String(current.country_id || countryId) === String(countryId)
+          && !items.some((r) => String(r.id) === String(current.id))) {
+          items.unshift(current);
+        }
+        setRegions(items);
+      })
+      .catch(() => {
+        if (!cancelled && form.region) setRegions([form.region]);
+        else if (!cancelled) setRegions([]);
+      });
+    return () => { cancelled = true; };
+  }, [countryId, form.region]);
 
   const onCountryChange = (value) => {
-    setCountryId(value);
     setForm((prev) => ({ ...prev, country_id: value, region_id: '' }));
   };
 
@@ -1166,7 +1298,7 @@ function CityWhatsAppCommunityFields({ form, setForm, t }) {
 
   return (
     <>
-      <Field t={t} label="WhatsApp Community" hint="Optional. Links this district to a WhatsApp community group.">
+      <Field t={t} label="WhatsApp Community" hint="To leave this district without a community, choose “Not assigned”.">
         <Select
           t={t}
           value={form.whatsapp_group_id || ''}
@@ -1174,7 +1306,7 @@ function CityWhatsAppCommunityFields({ form, setForm, t }) {
           disabled={loading}
         >
           <option value="">
-            {loading ? 'Loading communities…' : 'Select WhatsApp community (optional)'}
+            {loading ? 'Loading communities…' : 'Not assigned (no WhatsApp community)'}
           </option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>

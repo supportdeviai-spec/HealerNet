@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\Status;
+use App\Exceptions\GuardedDeletionException;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\RespondsWithJson;
 use App\Http\Requests\Admin\StoreRegionRequest;
 use App\Http\Requests\Admin\UpdateRegionRequest;
 use App\Models\Region;
+use App\Services\GuardedRecordDeletionService;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,8 +18,10 @@ class AdminRegionController extends Controller
 {
     use RespondsWithJson;
 
-    public function __construct(private readonly LocationService $locationService)
-    {
+    public function __construct(
+        private readonly LocationService $locationService,
+        private readonly GuardedRecordDeletionService $guardedDeletion,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -70,5 +74,18 @@ class AdminRegionController extends Controller
         );
 
         return $this->successResponse('Region status updated successfully.', $region);
+    }
+
+    public function destroy(Region $region): JsonResponse
+    {
+        try {
+            $this->guardedDeletion->deleteRegion($region);
+        } catch (GuardedDeletionException $e) {
+            return $this->errorResponse($e->getMessage(), $e->errors, $e->status);
+        }
+
+        $this->locationService->clearLocationCache();
+
+        return $this->successResponse('State deleted successfully.');
     }
 }

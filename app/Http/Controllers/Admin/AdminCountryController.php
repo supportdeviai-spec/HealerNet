@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\Status;
+use App\Exceptions\GuardedDeletionException;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\RespondsWithJson;
 use App\Http\Requests\Admin\StoreCountryRequest;
 use App\Http\Requests\Admin\UpdateCountryRequest;
 use App\Models\Country;
+use App\Services\GuardedRecordDeletionService;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,8 +18,10 @@ class AdminCountryController extends Controller
 {
     use RespondsWithJson;
 
-    public function __construct(private readonly LocationService $locationService)
-    {
+    public function __construct(
+        private readonly LocationService $locationService,
+        private readonly GuardedRecordDeletionService $guardedDeletion,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -72,5 +76,18 @@ class AdminCountryController extends Controller
         );
 
         return $this->successResponse('Country status updated successfully.', $country);
+    }
+
+    public function destroy(Country $country): JsonResponse
+    {
+        try {
+            $this->guardedDeletion->deleteCountry($country);
+        } catch (GuardedDeletionException $e) {
+            return $this->errorResponse($e->getMessage(), $e->errors, $e->status);
+        }
+
+        $this->locationService->clearLocationCache();
+
+        return $this->successResponse('Country deleted successfully.');
     }
 }

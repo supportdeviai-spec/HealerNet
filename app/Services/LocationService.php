@@ -155,7 +155,12 @@ class LocationService
     public function paginateCountries(array $filters = [], int $perPage = 15): LengthAwarePaginator
     {
         $filters = $this->normalizeFilters($filters);
-        $query = Country::query()->orderBy('name');
+        $query = Country::query()
+            ->withCount([
+                'regions',
+                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+            ])
+            ->orderBy('name');
 
         if (!empty($filters['search'])) {
             $search = $filters['search'];
@@ -176,6 +181,10 @@ class LocationService
     {
         $filters = $this->normalizeFilters($filters);
         $query = Region::with('country:id,name,code')
+            ->withCount([
+                'cities',
+                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+            ])
             ->orderBy('name');
 
         if (!empty($filters['country_id'])) {
@@ -200,6 +209,11 @@ class LocationService
             'region.country:id,name',
             'activeWhatsappGroups:id,name,whatsapp_url,status',
         ])
+            ->withCount([
+                'cityWhatsappGroups',
+                'communityGroups',
+                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+            ])
             ->orderBy('name');
 
         if (!empty($filters['country_id'])) {
@@ -262,8 +276,8 @@ class LocationService
 
     /**
      * Soft-deactivate a location record (status = inactive).
-     * Records are never hard-deleted so registered users keep valid references.
      * Inactive locations are hidden from registration dropdowns only.
+     * Unused locations can be permanently removed via the guarded delete endpoints.
      */
     public function toggleStatus(object $model, Status $status): object
     {

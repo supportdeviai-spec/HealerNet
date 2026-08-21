@@ -152,9 +152,12 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::delete('/whatsapp-groups/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'destroy'])->middleware('permission:whatsapp-groups.delete');
 
     Route::get('/whatsapp-community-imports/template', [AdminWhatsAppCommunityImportController::class, 'template']);
+    Route::get('/whatsapp-community-imports/preview/{token}', [AdminWhatsAppCommunityImportController::class, 'previewStatus']);
+    Route::get('/whatsapp-community-imports/{whatsappCommunityImport}/status', [AdminWhatsAppCommunityImportController::class, 'status']);
     Route::get('/whatsapp-community-imports', [AdminWhatsAppCommunityImportController::class, 'history']);
     Route::post('/whatsapp-community-imports/preview', [AdminWhatsAppCommunityImportController::class, 'preview']);
     Route::post('/whatsapp-community-imports/confirm', [AdminWhatsAppCommunityImportController::class, 'confirm']);
+    Route::delete('/whatsapp-community-imports/{whatsappCommunityImport}', [AdminWhatsAppCommunityImportController::class, 'destroy']);
 
     Route::middleware('permission:cms.view')->get('/pages', [AdminPageController::class, 'index']);
     Route::middleware('permission:cms.view')->get('/pages/{page}', [AdminPageController::class, 'show']);
@@ -179,6 +182,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::post('/countries', [AdminCountryController::class, 'store'])->middleware('permission:countries.create');
     Route::put('/countries/{country}', [AdminCountryController::class, 'update'])->middleware('permission:countries.edit');
     Route::patch('/countries/{country}/status', [AdminCountryController::class, 'updateStatus'])->middleware('permission:countries.edit');
+    Route::delete('/countries/{country}', [AdminCountryController::class, 'destroy'])->middleware('permission:countries.delete');
 
     Route::middleware('permission:states.view')->group(function () {
         Route::get('/regions', [AdminRegionController::class, 'index']);
@@ -187,6 +191,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::post('/regions', [AdminRegionController::class, 'store'])->middleware('permission:states.create');
     Route::put('/regions/{region}', [AdminRegionController::class, 'update'])->middleware('permission:states.edit');
     Route::patch('/regions/{region}/status', [AdminRegionController::class, 'updateStatus'])->middleware('permission:states.edit');
+    Route::delete('/regions/{region}', [AdminRegionController::class, 'destroy'])->middleware('permission:states.delete');
 
     Route::middleware('permission:cities.view')->group(function () {
         Route::get('/cities', [AdminCityController::class, 'index']);
@@ -195,6 +200,7 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::post('/cities', [AdminCityController::class, 'store'])->middleware('permission:cities.create');
     Route::put('/cities/{city}', [AdminCityController::class, 'update'])->middleware('permission:cities.edit');
     Route::patch('/cities/{city}/status', [AdminCityController::class, 'updateStatus'])->middleware('permission:cities.edit');
+    Route::delete('/cities/{city}', [AdminCityController::class, 'destroy'])->middleware('permission:cities.delete');
 
     Route::middleware('permission:community-groups.view')->group(function () {
         Route::get('/community-groups', [AdminCommunityGroupController::class, 'index']);

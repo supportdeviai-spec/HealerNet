@@ -17,7 +17,7 @@ class PreviewWhatsAppCommunityImportRequest extends FormRequest
             'file' => [
                 'required',
                 'file',
-                'max:10240',
+                'max:'.(int) config('whatsapp_import.max_file_kilobytes', 204800),
                 'extensions:xlsx,xls,csv',
             ],
         ];
@@ -28,7 +28,7 @@ class PreviewWhatsAppCommunityImportRequest extends FormRequest
         return [
             'file.required' => 'Please upload an Excel or CSV file.',
             'file.extensions' => 'Upload a valid Excel or CSV file (.xlsx, .xls, .csv).',
-            'file.max' => 'The import file may not be larger than 10 MB.',
+            'file.max' => 'The import file may not be larger than 200 MB.',
         ];
     }
 }

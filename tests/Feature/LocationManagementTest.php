@@ -160,6 +160,50 @@ class LocationManagementTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_admin_can_update_district_name_and_keep_same_name(): void
+    {
+        Sanctum::actingAs($this->createAdmin());
+        $country = Country::create(['name' => 'India', 'code' => 'IN', 'phone_code' => '+91', 'status' => Status::ACTIVE]);
+        $region = Region::create(['country_id' => $country->id, 'name' => 'Punjab', 'type' => 'state', 'status' => Status::ACTIVE]);
+        $city = City::create(['region_id' => $region->id, 'name' => 'Mohali', 'status' => Status::ACTIVE]);
+        $group = $this->createWhatsAppGroup(['name' => 'Mohali Healers']);
+
+        $this->putJson("/api/admin/cities/{$city->id}", [
+            'region_id' => (string) $region->id,
+            'name' => 'Mohali',
+            'status' => 'Active',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->putJson("/api/admin/cities/{$city->id}", [
+            'region_id' => $region->id,
+            'name' => 'Sahibzada Ajit Singh Nagar',
+            'status' => 'active',
+            'whatsapp_group_id' => $group->id,
+        ])->assertOk();
+
+        $this->assertDatabaseHas('cities', [
+            'id' => $city->id,
+            'name' => 'Sahibzada Ajit Singh Nagar',
+        ]);
+        $this->assertDatabaseHas('city_whatsapp_groups', [
+            'city_id' => $city->id,
+            'whatsapp_group_id' => $group->id,
+        ]);
+
+        $this->putJson("/api/admin/cities/{$city->id}", [
+            'region_id' => $region->id,
+            'name' => 'Sahibzada Ajit Singh Nagar',
+            'status' => 'active',
+            'whatsapp_group_id' => null,
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('city_whatsapp_groups', [
+            'city_id' => $city->id,
+            'whatsapp_group_id' => $group->id,
+        ]);
+        $this->assertDatabaseHas('whatsapp_groups', ['id' => $group->id]);
+    }
+
     public function test_community_group_belongs_to_city_and_validates_whatsapp_url(): void
     {
         Sanctum::actingAs($this->createAdmin());

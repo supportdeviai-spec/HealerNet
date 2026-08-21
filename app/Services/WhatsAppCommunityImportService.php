@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\Status;
+use App\Jobs\PreviewWhatsAppCommunityImport;
+use App\Jobs\ProcessWhatsAppCommunityImport;
 use App\Models\City;
 use App\Models\CityWhatsAppGroup;
 use App\Models\Country;
@@ -10,10 +12,13 @@ use App\Models\Region;
 use App\Models\WhatsAppCommunityImport;
 use App\Models\WhatsAppGroup;
 use App\Support\LocationNameNormalizer;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -27,7 +32,11 @@ class WhatsAppCommunityImportService
 
     public const CACHE_TTL_MINUTES = 30;
 
-    public const MAX_ROWS = 10000;
+    public const MAX_ROWS = 1000000;
+
+    public const CHUNK_SIZE = 500;
+
+    public const MAX_FILE_KILOBYTES = 204800;
 
     public const WHATSAPP_LINK_PATTERN = '#^https://chat\.whatsapp\.com/.+#i';
 
@@ -51,92 +60,241 @@ class WhatsAppCommunityImportService
 
     public function __construct(private readonly SpreadsheetRowReader $reader) {}
 
-    public function preview(UploadedFile $file, int $userId): array
+    public static function configureImportQueue(object $job): void
     {
-        $parsed = $this->parseFile($file);
-        $result = $this->evaluate($parsed['rows'], commit: false);
+        $queue = (string) config('whatsapp_import.queue', 'whatsapp-imports');
+        $job->onQueue($queue);
 
-        $fileName = $this->safeFileName($file->getClientOriginalName());
-        $token = (string) Str::uuid();
-        Cache::put(
-            self::CACHE_PREFIX.$token,
-            [
-                'user_id' => $userId,
-                'file_name' => $fileName,
-                'rows' => $parsed['rows'],
-            ],
-            now()->addMinutes(self::CACHE_TTL_MINUTES)
-        );
-
-        return [
-            'import_token' => $token,
-            'file_name' => $fileName,
-            ...$result,
-        ];
+        if (config('queue.default') === 'redis' && ! app()->runningUnitTests()) {
+            $job->onConnection('redis_imports');
+        }
     }
 
-    public function confirm(string $token, int $userId): array
+    public function preview(UploadedFile $file, int $userId): array
     {
-        $payload = Cache::get(self::CACHE_PREFIX.$token);
+        $fileName = $this->safeFileName($file->getClientOriginalName());
+        $token = (string) Str::uuid();
+        $storedPath = $this->storeUpload($file, $token);
+
+        $this->putPreviewCache($token, [
+            'user_id' => $userId,
+            'file_name' => $fileName,
+            'file_path' => $storedPath,
+            'status' => 'queued',
+            'processed_rows' => 0,
+            'total_rows' => 0,
+            'progress' => 0,
+            'error_message' => null,
+            'result' => null,
+        ]);
+
+        PreviewWhatsAppCommunityImport::dispatch($token);
+
+        return $this->formatPreviewPayload($token, $this->getPreviewCache($token) ?? []);
+    }
+
+    public function previewStatus(string $token, int $userId): array
+    {
+        $payload = $this->getPreviewCache($token);
         if (! is_array($payload) || (int) ($payload['user_id'] ?? 0) !== $userId) {
             throw new InvalidArgumentException('Import preview expired. Upload the file again.');
         }
 
-        try {
-            $result = DB::transaction(function () use ($payload) {
-                return $this->evaluate($payload['rows'], commit: true);
-            });
-        } catch (Throwable $e) {
-            $this->recordHistory($userId, $payload['file_name'] ?? 'spreadsheet', 'failed', [
-                'summary' => $this->emptySummary(),
-                'issues' => [[
-                    'excel_row' => null,
-                    'country' => '',
-                    'state' => '',
-                    'district' => '',
-                    'group_name' => '',
-                    'type' => 'error',
-                    'reason' => 'Import failed before completion. No data was saved.',
-                ]],
-            ]);
-            throw $e;
+        return $this->formatPreviewPayload($token, $payload);
+    }
+
+    public function confirm(string $token, int $userId): array
+    {
+        $payload = $this->getPreviewCache($token);
+        if (! is_array($payload) || (int) ($payload['user_id'] ?? 0) !== $userId) {
+            throw new InvalidArgumentException('Import preview expired. Upload the file again.');
         }
 
-        Cache::forget(self::CACHE_PREFIX.$token);
-        app(LocationService::class)->clearLocationCache();
+        $status = (string) ($payload['status'] ?? '');
+        if ($status === 'failed') {
+            throw new InvalidArgumentException($payload['error_message'] ?? 'Import preview failed. Upload the file again.');
+        }
+        if ($status !== 'ready') {
+            throw new InvalidArgumentException('Import preview is still running. Wait for the preview to finish.');
+        }
 
-        $history = $this->recordHistory($userId, $payload['file_name'] ?? 'spreadsheet', 'completed', $result);
+        $filePath = (string) ($payload['file_path'] ?? '');
+        if ($filePath === '' || ! Storage::disk($this->disk())->exists($filePath)) {
+            throw new InvalidArgumentException('Import preview expired. Upload the file again.');
+        }
 
-        ActivityLogger::log(
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : [
+            'summary' => $this->emptySummary(),
+            'issues' => [],
+        ];
+
+        $import = $this->newImportRecord(
             $userId,
-            'whatsapp_community_import',
-            sprintf(
-                'Imported %s: %d rows, created countries=%d states=%d districts=%d groups=%d, updated districts=%d groups=%d, skipped=%d, errors=%d, conflicts=%d',
-                $payload['file_name'] ?? 'spreadsheet',
-                $result['summary']['total_rows'],
-                $result['summary']['countries']['new'],
-                $result['summary']['states']['new'],
-                $result['summary']['districts']['new'],
-                $result['summary']['whatsapp_groups']['new'],
-                $result['summary']['updated']['districts'],
-                $result['summary']['updated']['whatsapp_groups'],
-                $result['summary']['skipped_duplicates'],
-                $result['summary']['errors'],
-                $result['summary']['conflicts']
-            )
+            (string) ($payload['file_name'] ?? 'spreadsheet'),
+            'queued',
+            $result,
+            $filePath
         );
 
-        return [
-            'file_name' => $payload['file_name'] ?? null,
-            'history_id' => $history->id,
-            ...$result,
-        ];
+        Cache::forget(self::CACHE_PREFIX.$token);
+        ProcessWhatsAppCommunityImport::dispatch($import->id);
+
+        $import->refresh();
+
+        return $this->formatImportPayload($import);
+    }
+
+    public function runPreview(string $token): void
+    {
+        $payload = $this->getPreviewCache($token);
+        if (! is_array($payload) || empty($payload['file_path'])) {
+            Log::error('WhatsApp community import preview cache miss', ['token' => $token]);
+            throw new InvalidArgumentException('Import preview expired. Upload the file again.');
+        }
+
+        $this->putPreviewCache($token, [
+            ...$payload,
+            'status' => 'processing',
+            'started_at' => now()->toIso8601String(),
+        ]);
+
+        $absolute = $this->absolutePath((string) $payload['file_path']);
+        $state = $this->newEvaluationState();
+
+        foreach ($this->mappedRowChunks($absolute) as $chunk) {
+            $this->evaluateRows($chunk, false, $state);
+            $this->putPreviewCache($token, [
+                ...($this->getPreviewCache($token) ?: $payload),
+                'status' => 'processing',
+                'processed_rows' => $state['summary']['total_rows'],
+                'total_rows' => $state['summary']['total_rows'],
+                'progress' => 0,
+                'result' => [
+                    'summary' => $state['summary'],
+                    'issues' => $this->cappedIssues($state['issues']),
+                ],
+            ]);
+        }
+
+        $total = (int) $state['summary']['total_rows'];
+        $this->putPreviewCache($token, [
+            ...($this->getPreviewCache($token) ?: $payload),
+            'status' => 'ready',
+            'processed_rows' => $total,
+            'total_rows' => $total,
+            'progress' => 100,
+            'result' => [
+                'summary' => $state['summary'],
+                'issues' => $this->cappedIssues($state['issues']),
+            ],
+        ]);
+    }
+
+    public function runImport(int $importId): void
+    {
+        $import = WhatsAppCommunityImport::query()->find($importId);
+        if (! $import) {
+            return;
+        }
+
+        $filePath = (string) $import->file_path;
+        if ($filePath === '' || ! Storage::disk($this->disk())->exists($filePath)) {
+            $this->markImportFailed($import, 'The import file is no longer available. Upload the file again.');
+
+            return;
+        }
+
+        $import->update([
+            'status' => 'processing',
+            'started_at' => $import->started_at ?? now(),
+            'progress' => 0,
+            'processed_rows' => 0,
+            'error_message' => null,
+        ]);
+
+        $absolute = $this->absolutePath($filePath);
+        $expectedTotal = max(0, (int) $import->total_rows);
+        $state = $this->newEvaluationState();
+
+        try {
+            foreach ($this->mappedRowChunks($absolute) as $chunk) {
+                DB::transaction(function () use ($chunk, &$state) {
+                    $this->evaluateRows($chunk, true, $state);
+                });
+
+                $this->persistImportProgress($import, $state, $expectedTotal);
+            }
+
+            $final = [
+                'summary' => $state['summary'],
+                'issues' => $this->cappedIssues($state['issues']),
+            ];
+            $this->finalizeImport($import, $final);
+        } catch (Throwable $e) {
+            $this->failImport($importId, $e);
+            throw $e;
+        }
+    }
+
+    public function failPreview(string $token, ?Throwable $e = null): void
+    {
+        if ($e) {
+            report($e);
+            Log::error('WhatsApp community import preview failed', [
+                'token' => $token,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $payload = $this->getPreviewCache($token);
+        if (! is_array($payload)) {
+            return;
+        }
+
+        $message = $e instanceof InvalidArgumentException
+            ? $e->getMessage()
+            : 'Unable to read the uploaded file. Upload a valid Excel or CSV file.';
+
+        $this->putPreviewCache($token, [
+            ...$payload,
+            'status' => 'failed',
+            'error_message' => $message,
+            'progress' => 0,
+        ]);
+        $this->deleteStoredFile($payload['file_path'] ?? null);
+    }
+
+    public function failImport(int $importId, ?Throwable $e = null): void
+    {
+        if ($e) {
+            report($e);
+            Log::error('WhatsApp community import failed', [
+                'import_id' => $importId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $message = $e instanceof InvalidArgumentException
+            ? $e->getMessage()
+            : 'Import failed. Some rows from earlier chunks may already have been saved. Check Import History and try a corrected file.';
+
+        $import = WhatsAppCommunityImport::query()->find($importId);
+        if (! $import) {
+            return;
+        }
+
+        $this->markImportFailed($import, $message);
+    }
+
+    public function importStatus(WhatsAppCommunityImport $import): array
+    {
+        return $this->formatImportPayload($import);
     }
 
     /**
      * @return Collection<int, WhatsAppCommunityImport>
      */
-    public function history(int $limit = 20): Collection
+    public function history(int $limit = 5): Collection
     {
         return WhatsAppCommunityImport::query()
             ->with('user:id,name,email')
@@ -144,6 +302,47 @@ class WhatsAppCommunityImportService
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
+    }
+
+    public function paginateHistory(int $perPage = 15): LengthAwarePaginator
+    {
+        return WhatsAppCommunityImport::query()
+            ->with('user:id,name,email')
+            ->orderByDesc('imported_at')
+            ->orderByDesc('id')
+            ->paginate($perPage);
+    }
+
+    public function deleteHistory(WhatsAppCommunityImport $import): void
+    {
+        $this->deleteStoredFile($import->file_path);
+        $import->delete();
+    }
+
+    public function pruneStalePreviewFiles(): void
+    {
+        $disk = Storage::disk($this->disk());
+        $directory = $this->directory();
+        if (! $disk->exists($directory)) {
+            return;
+        }
+
+        $inUse = WhatsAppCommunityImport::query()
+            ->whereIn('status', ['queued', 'processing'])
+            ->whereNotNull('file_path')
+            ->pluck('file_path')
+            ->filter()
+            ->all();
+
+        $cutoff = now()->subHours(2)->timestamp;
+        foreach ($disk->files($directory) as $file) {
+            if (in_array($file, $inUse, true)) {
+                continue;
+            }
+            if ($disk->lastModified($file) < $cutoff) {
+                $disk->delete($file);
+            }
+        }
     }
 
     public function templateDownload(): StreamedResponse
@@ -169,7 +368,15 @@ class WhatsAppCommunityImportService
     /**
      * @param  array{summary: array<string, mixed>, issues: list<array<string, mixed>>}  $result
      */
-    private function recordHistory(int $userId, string $fileName, string $status, array $result): WhatsAppCommunityImport
+    private function recordHistory(int $userId, string $fileName, string $status, array $result, ?string $filePath = null): WhatsAppCommunityImport
+    {
+        return $this->newImportRecord($userId, $fileName, $status, $result, $filePath);
+    }
+
+    /**
+     * @param  array{summary?: array<string, mixed>, issues?: list<array<string, mixed>>}  $result
+     */
+    private function newImportRecord(int $userId, string $fileName, string $status, array $result, ?string $filePath = null): WhatsAppCommunityImport
     {
         $summary = $result['summary'] ?? $this->emptySummary();
 
@@ -179,21 +386,345 @@ class WhatsAppCommunityImportService
             + (int) ($summary['whatsapp_groups']['new'] ?? 0);
         $updated = (int) ($summary['updated']['districts'] ?? 0)
             + (int) ($summary['updated']['whatsapp_groups'] ?? 0);
+        $processed = (int) ($summary['total_rows'] ?? 0);
+        $failed = (int) ($summary['errors'] ?? 0);
+        $success = max(0, $processed - $failed - (int) ($summary['conflicts'] ?? 0) - (int) ($summary['skipped_duplicates'] ?? 0));
 
         return WhatsAppCommunityImport::create([
             'user_id' => $userId,
             'file_name' => $fileName,
+            'file_path' => $filePath,
             'status' => $status,
-            'total_rows' => (int) ($summary['total_rows'] ?? 0),
+            'total_rows' => $processed,
+            'processed_rows' => $status === 'queued' ? 0 : $processed,
+            'success_rows' => $status === 'queued' ? 0 : $success,
+            'failed_rows' => $status === 'queued' ? 0 : $failed,
+            'progress' => $status === 'queued' ? 0 : 100,
             'created_count' => $created,
             'updated_count' => $updated,
             'skipped_count' => (int) ($summary['skipped_duplicates'] ?? 0),
-            'error_count' => (int) ($summary['errors'] ?? 0),
+            'error_count' => $failed,
             'conflict_count' => (int) ($summary['conflicts'] ?? 0),
             'summary' => $summary,
-            'issues' => $result['issues'] ?? [],
-            'imported_at' => now(),
+            'issues' => $this->cappedIssues($result['issues'] ?? []),
+            'imported_at' => in_array($status, ['completed', 'completed_with_errors', 'failed'], true) ? now() : null,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $state
+     */
+    private function persistImportProgress(WhatsAppCommunityImport $import, array $state, int $expectedTotal): void
+    {
+        $summary = $state['summary'];
+        $processed = (int) ($summary['total_rows'] ?? 0);
+        $failed = (int) ($summary['errors'] ?? 0);
+        $conflicts = (int) ($summary['conflicts'] ?? 0);
+        $skipped = (int) ($summary['skipped_duplicates'] ?? 0);
+        $success = max(0, $processed - $failed - $conflicts - $skipped);
+        $total = max($expectedTotal, $processed, 1);
+        $created = (int) ($summary['countries']['new'] ?? 0)
+            + (int) ($summary['states']['new'] ?? 0)
+            + (int) ($summary['districts']['new'] ?? 0)
+            + (int) ($summary['whatsapp_groups']['new'] ?? 0);
+        $updated = (int) ($summary['updated']['districts'] ?? 0)
+            + (int) ($summary['updated']['whatsapp_groups'] ?? 0);
+
+        $import->update([
+            'status' => 'processing',
+            'processed_rows' => $processed,
+            'success_rows' => $success,
+            'failed_rows' => $failed,
+            'progress' => min(99, (int) round($processed / $total * 100)),
+            'total_rows' => max((int) $import->total_rows, $processed),
+            'created_count' => $created,
+            'updated_count' => $updated,
+            'skipped_count' => $skipped,
+            'error_count' => $failed,
+            'conflict_count' => $conflicts,
+            'summary' => $summary,
+            'issues' => $this->cappedIssues($state['issues'] ?? []),
+        ]);
+    }
+
+    /**
+     * @param  array{summary: array<string, mixed>, issues: list<array<string, mixed>>}  $result
+     */
+    private function finalizeImport(WhatsAppCommunityImport $import, array $result): void
+    {
+        $summary = $result['summary'] ?? $this->emptySummary();
+        $processed = (int) ($summary['total_rows'] ?? 0);
+        $failed = (int) ($summary['errors'] ?? 0);
+        $conflicts = (int) ($summary['conflicts'] ?? 0);
+        $skipped = (int) ($summary['skipped_duplicates'] ?? 0);
+        $success = max(0, $processed - $failed - $conflicts - $skipped);
+        $created = (int) ($summary['countries']['new'] ?? 0)
+            + (int) ($summary['states']['new'] ?? 0)
+            + (int) ($summary['districts']['new'] ?? 0)
+            + (int) ($summary['whatsapp_groups']['new'] ?? 0);
+        $updated = (int) ($summary['updated']['districts'] ?? 0)
+            + (int) ($summary['updated']['whatsapp_groups'] ?? 0);
+
+        $status = ($failed > 0 || $conflicts > 0) ? 'completed_with_errors' : 'completed';
+
+        $filePath = $import->file_path;
+        $import->update([
+            'status' => $status,
+            'file_path' => null,
+            'total_rows' => $processed,
+            'processed_rows' => $processed,
+            'success_rows' => $success,
+            'failed_rows' => $failed,
+            'progress' => 100,
+            'created_count' => $created,
+            'updated_count' => $updated,
+            'skipped_count' => $skipped,
+            'error_count' => $failed,
+            'conflict_count' => $conflicts,
+            'summary' => $summary,
+            'issues' => $this->cappedIssues($result['issues'] ?? []),
+            'imported_at' => now(),
+            'completed_at' => now(),
+            'error_message' => null,
+        ]);
+
+        $this->deleteStoredFile($filePath);
+        app(LocationService::class)->clearLocationCache();
+
+        if ($import->user_id) {
+            ActivityLogger::log(
+                (int) $import->user_id,
+                'whatsapp_community_import',
+                sprintf(
+                    'Imported %s: %d rows, created countries=%d states=%d districts=%d groups=%d, updated districts=%d groups=%d, skipped=%d, errors=%d, conflicts=%d',
+                    $import->file_name,
+                    $processed,
+                    $summary['countries']['new'] ?? 0,
+                    $summary['states']['new'] ?? 0,
+                    $summary['districts']['new'] ?? 0,
+                    $summary['whatsapp_groups']['new'] ?? 0,
+                    $summary['updated']['districts'] ?? 0,
+                    $summary['updated']['whatsapp_groups'] ?? 0,
+                    $skipped,
+                    $failed,
+                    $conflicts
+                )
+            );
+        }
+    }
+
+    private function markImportFailed(WhatsAppCommunityImport $import, string $message): void
+    {
+        $this->deleteStoredFile($import->file_path);
+        $import->update([
+            'status' => 'failed',
+            'file_path' => null,
+            'error_message' => $message,
+            'completed_at' => now(),
+            'imported_at' => $import->imported_at ?? now(),
+            'progress' => (int) $import->progress,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function formatPreviewPayload(string $token, array $payload): array
+    {
+        $result = is_array($payload['result'] ?? null) ? $payload['result'] : ['summary' => null, 'issues' => []];
+        $data = [
+            'import_token' => $token,
+            'file_name' => $payload['file_name'] ?? null,
+            'status' => $payload['status'] ?? 'queued',
+            'processed_rows' => (int) ($payload['processed_rows'] ?? 0),
+            'total_rows' => (int) ($payload['total_rows'] ?? 0),
+            'progress' => (int) ($payload['progress'] ?? 0),
+            'error_message' => $payload['error_message'] ?? null,
+        ];
+
+        if (isset($result['summary']) && is_array($result['summary'])) {
+            $data['summary'] = $result['summary'];
+            $data['issues'] = $result['issues'] ?? [];
+        }
+
+        return $data;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatImportPayload(WhatsAppCommunityImport $import): array
+    {
+        $summary = is_array($import->summary) ? $import->summary : $this->emptySummary();
+        $issues = is_array($import->issues) ? $import->issues : [];
+
+        return [
+            'file_name' => $import->file_name,
+            'history_id' => $import->id,
+            'status' => $import->status,
+            'total_rows' => (int) $import->total_rows,
+            'processed_rows' => (int) $import->processed_rows,
+            'success_rows' => (int) $import->success_rows,
+            'failed_rows' => (int) $import->failed_rows,
+            'progress' => (int) $import->progress,
+            'error_message' => $import->error_message,
+            'started_at' => optional($import->started_at)?->toIso8601String(),
+            'completed_at' => optional($import->completed_at)?->toIso8601String(),
+            'summary' => $summary,
+            'issues' => $issues,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function putPreviewCache(string $token, array $payload): void
+    {
+        Cache::put(
+            self::CACHE_PREFIX.$token,
+            $payload,
+            now()->addMinutes((int) config('whatsapp_import.preview_ttl_minutes', self::CACHE_TTL_MINUTES))
+        );
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function getPreviewCache(string $token): ?array
+    {
+        $payload = Cache::get(self::CACHE_PREFIX.$token);
+
+        return is_array($payload) ? $payload : null;
+    }
+
+    private function storeUpload(UploadedFile $file, string $token): string
+    {
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'xlsx');
+        if (! in_array($extension, ['xlsx', 'xls', 'csv'], true)) {
+            $extension = 'xlsx';
+        }
+
+        $path = $file->storeAs($this->directory(), $token.'.'.$extension, $this->disk());
+        if (! is_string($path) || $path === '') {
+            throw new InvalidArgumentException('Unable to store the uploaded file.');
+        }
+
+        return $path;
+    }
+
+    private function absolutePath(string $storedPath): string
+    {
+        return Storage::disk($this->disk())->path($storedPath);
+    }
+
+    private function deleteStoredFile(?string $path): void
+    {
+        if (! $path) {
+            return;
+        }
+
+        $disk = Storage::disk($this->disk());
+        if ($disk->exists($path)) {
+            $disk->delete($path);
+        }
+    }
+
+    private function disk(): string
+    {
+        return (string) config('whatsapp_import.disk', 'local');
+    }
+
+    private function directory(): string
+    {
+        return (string) config('whatsapp_import.directory', 'whatsapp-community-imports');
+    }
+
+    private function chunkSize(): int
+    {
+        return max(1, (int) config('whatsapp_import.chunk_size', self::CHUNK_SIZE));
+    }
+
+    private function maxRows(): int
+    {
+        return max(1, (int) config('whatsapp_import.max_rows', self::MAX_ROWS));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $issues
+     * @return list<array<string, mixed>>
+     */
+    private function cappedIssues(array $issues): array
+    {
+        $max = max(1, (int) config('whatsapp_import.max_stored_issues', 2000));
+
+        return array_slice($issues, 0, $max);
+    }
+
+    /**
+     * @return \Generator<int, list<array<string, mixed>>>
+     */
+    private function mappedRowChunks(string $absolutePath): \Generator
+    {
+        $map = null;
+        $buffer = [];
+        $dataRows = 0;
+        $excelRow = 0;
+        $sawAnyRow = false;
+        $chunkSize = $this->chunkSize();
+        $maxRows = $this->maxRows();
+
+        foreach ($this->reader->iterate($absolutePath) as $line) {
+            $sawAnyRow = true;
+            $excelRow++;
+
+            if ($map === null) {
+                $candidate = $this->mapHeaders($line);
+                if ($candidate !== []) {
+                    $map = $candidate;
+                    $missing = array_values(array_filter(
+                        self::REQUIRED_HEADERS,
+                        fn (string $key) => ! array_key_exists($key, $map)
+                    ));
+                    if ($missing !== []) {
+                        throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+                    }
+                }
+
+                continue;
+            }
+
+            $row = [];
+            foreach ($map as $key => $col) {
+                $row[$key] = $this->cellString($line[$col] ?? null);
+            }
+            if ($this->rowIsEmpty($row)) {
+                continue;
+            }
+
+            $row['excel_row'] = $excelRow;
+            $buffer[] = $row;
+            $dataRows++;
+
+            if (count($buffer) >= $chunkSize) {
+                yield $buffer;
+                $buffer = [];
+            }
+
+            if ($dataRows >= $maxRows) {
+                break;
+            }
+        }
+
+        if (! $sawAnyRow) {
+            throw new InvalidArgumentException('The spreadsheet is empty.');
+        }
+        if ($map === null) {
+            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+        }
+        if ($buffer !== []) {
+            yield $buffer;
+        }
     }
 
     /**
@@ -276,32 +807,60 @@ class WhatsAppCommunityImportService
      */
     public function evaluate(array $rows, bool $commit): array
     {
-        $countries = $this->loadCountries();
-        $regions = $this->loadRegions();
-        $cities = $this->loadCities();
-        $groups = $this->loadGroups();
-        $usedCountryCodes = $this->usedCountryCodes($countries);
+        $state = $this->newEvaluationState();
+        $this->evaluateRows($rows, $commit, $state);
 
-        $seenExact = [];
-        $districtLink = [];
-
-        $summary = [
-            'total_rows' => count($rows),
-            'countries' => ['new' => 0, 'existing' => 0],
-            'states' => ['new' => 0, 'existing' => 0],
-            'districts' => ['new' => 0, 'existing' => 0],
-            'whatsapp_groups' => ['new' => 0, 'existing' => 0],
-            'updated' => ['districts' => 0, 'whatsapp_groups' => 0],
-            'skipped_duplicates' => 0,
-            'errors' => 0,
-            'conflicts' => 0,
+        return [
+            'summary' => $state['summary'],
+            'issues' => $this->cappedIssues($state['issues']),
         ];
-        $issues = [];
+    }
 
-        $countryCounted = [];
-        $stateCounted = [];
-        $districtCounted = [];
-        $groupCounted = [];
+    /**
+     * @return array<string, mixed>
+     */
+    private function newEvaluationState(): array
+    {
+        $countries = $this->loadCountries();
+
+        return [
+            'countries' => $countries,
+            'regions' => $this->loadRegions(),
+            'cities' => $this->loadCities(),
+            'groups' => $this->loadGroups(),
+            'usedCountryCodes' => $this->usedCountryCodes($countries),
+            'seenExact' => [],
+            'districtLink' => [],
+            'countryCounted' => [],
+            'stateCounted' => [],
+            'districtCounted' => [],
+            'groupCounted' => [],
+            'summary' => $this->emptySummary(),
+            'issues' => [],
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $state
+     */
+    private function evaluateRows(array $rows, bool $commit, array &$state): void
+    {
+        $countries = &$state['countries'];
+        $regions = &$state['regions'];
+        $cities = &$state['cities'];
+        $groups = &$state['groups'];
+        $usedCountryCodes = &$state['usedCountryCodes'];
+        $seenExact = &$state['seenExact'];
+        $districtLink = &$state['districtLink'];
+        $summary = &$state['summary'];
+        $issues = &$state['issues'];
+        $countryCounted = &$state['countryCounted'];
+        $stateCounted = &$state['stateCounted'];
+        $districtCounted = &$state['districtCounted'];
+        $groupCounted = &$state['groupCounted'];
+
+        $summary['total_rows'] += count($rows);
 
         foreach ($rows as $row) {
             $excelRow = (int) $row['excel_row'];
@@ -441,8 +1000,6 @@ class WhatsAppCommunityImportService
                 $summary['updated']['districts']++;
             }
         }
-
-        return ['summary' => $summary, 'issues' => $issues];
     }
 
     private function validateRow(

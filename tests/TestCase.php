@@ -22,6 +22,10 @@ abstract class TestCase extends BaseTestCase
 
         $app = parent::createApplication();
 
+        $app['config']->set('queue.default', 'sync');
+        $app['config']->set('cache.default', 'array');
+        $app['config']->set('app.env', 'testing');
+
         $database = (string) config('database.connections.mysql.database');
         if ($database === 'healernet') {
             throw new RuntimeException(
@@ -43,6 +47,9 @@ abstract class TestCase extends BaseTestCase
             'DB_USERNAME' => 'healernet_user',
             'DB_PASSWORD' => 'healernet_secret',
             'DB_URL' => '',
+            'QUEUE_CONNECTION' => 'sync',
+            'CACHE_STORE' => 'array',
+            'APP_ENV' => 'testing',
         ] as $key => $value) {
             putenv("{$key}={$value}");
             $_ENV[$key] = $value;

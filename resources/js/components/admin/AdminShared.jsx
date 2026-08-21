@@ -272,14 +272,29 @@ export function ErrorState({ t, onRetry }) {
   );
 }
 
-export function Modal({ t, open, onClose, title, children, width = 520, footer }) {
+export function Modal({ t, open, onClose, title, children, width = 520, footer, loading = false, loadingText = 'Please wait…' }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" style={{ background: "rgba(10,15,14,0.5)" }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="w-full rounded-2xl shadow-2xl my-8" style={{ maxWidth: width, background: t.surface, border: `1px solid ${t.border}` }}>
+    <div className="fixed inset-0 z-[100] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" style={{ background: "rgba(10,15,14,0.5)" }} onMouseDown={(e) => e.target === e.currentTarget && !loading && onClose()}>
+      <div className="w-full rounded-2xl shadow-2xl my-8 relative overflow-hidden" style={{ maxWidth: width, background: t.surface, border: `1px solid ${t.border}` }}>
+        {loading && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-2xl" style={{ background: "rgba(244, 248, 241, 0.78)", backdropFilter: "blur(1px)" }}>
+            <div
+              className="rounded-full animate-spin"
+              style={{
+                width: 48,
+                height: 48,
+                border: "4px solid rgba(31, 92, 59, 0.18)",
+                borderTopColor: BRAND.primary,
+              }}
+              aria-hidden
+            />
+            <div className="mt-3 text-sm font-semibold" style={{ color: BRAND.primary }}>{loadingText}</div>
+          </div>
+        )}
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: t.border }}>
           <div className="font-semibold" style={{ color: t.text, fontFamily: FONT_DISPLAY, fontSize: 18 }}>{title}</div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5" style={{ color: t.textMuted }}><X size={18} /></button>
+          <button onClick={onClose} disabled={loading} className="p-1.5 rounded-lg hover:bg-black/5 disabled:opacity-40" style={{ color: t.textMuted }}><X size={18} /></button>
         </div>
         <div className="px-5 py-4">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 px-5 py-4 border-t" style={{ borderColor: t.border }}>{footer}</div>}

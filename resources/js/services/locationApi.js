@@ -66,6 +66,10 @@ export const locationApi = {
     }).then(parseJson);
   },
 
+  adminDeleteCountry(id) {
+    return apiFetch(`/admin/countries/${id}`, { method: 'DELETE' }).then(parseJson);
+  },
+
   adminListRegions(params = {}) {
     return apiFetch(`/admin/regions${buildQuery(params)}`).then(parseJson);
   },
@@ -86,6 +90,10 @@ export const locationApi = {
     }).then(parseJson);
   },
 
+  adminDeleteRegion(id) {
+    return apiFetch(`/admin/regions/${id}`, { method: 'DELETE' }).then(parseJson);
+  },
+
   adminListCities(params = {}) {
     return apiFetch(`/admin/cities${buildQuery(params)}`).then(parseJson);
   },
@@ -104,6 +112,10 @@ export const locationApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
     }).then(parseJson);
+  },
+
+  adminDeleteCity(id) {
+    return apiFetch(`/admin/cities/${id}`, { method: 'DELETE' }).then(parseJson);
   },
 
   adminListCommunityGroups(params = {}) {
@@ -165,6 +177,10 @@ export const locationApi = {
     }).then(parseJson);
   },
 
+  adminPreviewWhatsAppCommunityImportStatus(token) {
+    return apiFetch(`/admin/whatsapp-community-imports/preview/${token}`).then(parseJson);
+  },
+
   adminConfirmWhatsAppCommunityImport(importToken) {
     return apiFetch('/admin/whatsapp-community-imports/confirm', {
       method: 'POST',
@@ -173,8 +189,17 @@ export const locationApi = {
     }).then(parseJson);
   },
 
-  adminListWhatsAppCommunityImports() {
-    return apiFetch('/admin/whatsapp-community-imports').then(parseJson);
+  adminWhatsAppCommunityImportStatus(id) {
+    return apiFetch(`/admin/whatsapp-community-imports/${id}/status`).then(parseJson);
+  },
+
+  adminListWhatsAppCommunityImports(params = {}) {
+    const query = buildQuery(params);
+    return apiFetch(`/admin/whatsapp-community-imports${query}`).then(parseJson);
+  },
+
+  adminDeleteWhatsAppCommunityImport(id) {
+    return apiFetch(`/admin/whatsapp-community-imports/${id}`, { method: 'DELETE' }).then(parseJson);
   },
 
   async adminDownloadWhatsAppImportTemplate() {

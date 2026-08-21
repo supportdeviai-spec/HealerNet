@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 Schedule::command('sanctum:prune-expired --hours=24')->daily();
 Schedule::command('auth:clear-resets')->daily();
+Schedule::call(function () {
+    app(\App\Services\WhatsAppCommunityImportService::class)->pruneStalePreviewFiles();
+})->hourly();

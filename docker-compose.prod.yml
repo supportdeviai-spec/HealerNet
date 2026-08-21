@@ -147,6 +147,45 @@ services:
     networks:
       - healernet-network
 
+  queue-imports:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: healernet-app
+    container_name: healernet-queue-imports
+    restart: always
+    command: php -d memory_limit=1024M -d max_execution_time=0 artisan queue:work redis_imports --queue=whatsapp-imports --tries=1 --timeout=7200 --sleep=1
+    working_dir: /var/www/html
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: queue-imports
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: ${APP_URL:-https://healernet.org}
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-healernet}
+      DB_USERNAME: ${DB_USERNAME:-healernet_user}
+      DB_PASSWORD: ${DB_PASSWORD:-healernet_secret}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+    volumes:
+      - .:/var/www/html
+      - ./docker/php/production.ini:/usr/local/etc/php/conf.d/local.ini:ro
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_started
+    networks:
+      - healernet-network
+
   scheduler:
     build:
       context: .

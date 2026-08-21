@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Exceptions\GuardedDeletionException;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\RespondsWithJson;
 use App\Http\Requests\Admin\StoreWhatsAppGroupRequest;
 use App\Http\Requests\Admin\UpdateWhatsAppGroupRequest;
 use App\Models\WhatsAppGroup;
+use App\Services\GuardedRecordDeletionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -14,9 +16,13 @@ class AdminWhatsAppGroupController extends Controller
 {
     use RespondsWithJson;
 
+    public function __construct(private readonly GuardedRecordDeletionService $guardedDeletion)
+    {
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = WhatsAppGroup::withCount(['members'])
+        $query = WhatsAppGroup::withCount(['members', 'cityMappings'])
             ->orderByDesc('created_at');
 
         if ($request->filled('search')) {
@@ -93,33 +99,11 @@ class AdminWhatsAppGroupController extends Controller
 
     public function destroy(WhatsAppGroup $whatsappGroup): JsonResponse
     {
-        $membersCount = $whatsappGroup->members()->count();
-        if ($membersCount > 0) {
-            return $this->errorResponse(
-                "Cannot delete \"{$whatsappGroup->name}\": {$membersCount} member(s) are still assigned to this community. Unassign or move those users first.",
-                [
-                    'reason' => 'has_members',
-                    'members_count' => $membersCount,
-                    'group_name' => $whatsappGroup->name,
-                ],
-                422
-            );
+        try {
+            $this->guardedDeletion->deleteWhatsAppGroup($whatsappGroup);
+        } catch (GuardedDeletionException $e) {
+            return $this->errorResponse($e->getMessage(), $e->errors, $e->status);
         }
-
-        $citiesCount = $whatsappGroup->cityMappings()->count();
-        if ($citiesCount > 0) {
-            return $this->errorResponse(
-                "Cannot delete \"{$whatsappGroup->name}\": it is still linked to {$citiesCount} district mapping(s). Remove those links in Group Management first.",
-                [
-                    'reason' => 'has_city_mappings',
-                    'cities_count' => $citiesCount,
-                    'group_name' => $whatsappGroup->name,
-                ],
-                422
-            );
-        }
-
-        $whatsappGroup->delete();
 
         return $this->successResponse('WhatsApp group deleted successfully.');
     }
