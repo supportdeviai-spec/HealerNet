@@ -28,29 +28,12 @@ class GuardedRecordDeletionService
                 ->where('whatsapp_group_id', $locked->id)
                 ->count();
 
-            $mappingsCount = (int) DB::table('city_whatsapp_groups')
-                ->where('whatsapp_group_id', $locked->id)
-                ->count();
-
-            if ($membersCount > 0 || $mappingsCount > 0) {
-                $reasons = [];
-                if ($membersCount > 0) {
-                    $reasons[] = 'it has community members';
-                }
-                if ($mappingsCount > 0) {
-                    $reasons[] = "it is mapped to {$mappingsCount} location(s). Remove the location mappings in Group Management first";
-                }
-
-                $reason = $membersCount > 0 && $mappingsCount > 0
-                    ? 'has_members_and_mappings'
-                    : ($membersCount > 0 ? 'has_members' : 'has_city_mappings');
-
+            if ($membersCount > 0) {
                 throw new GuardedDeletionException(
-                    'This WhatsApp group cannot be deleted because '.implode(', and ', $reasons).'.',
+                    'This WhatsApp group cannot be deleted because it has community members.',
                     [
-                        'reason' => $reason,
+                        'reason' => 'has_members',
                         'members_count' => $membersCount,
-                        'cities_count' => $mappingsCount,
                         'group_name' => $locked->name,
                     ]
                 );
@@ -72,7 +55,7 @@ class GuardedRecordDeletionService
             $statesCount = (int) Region::query()->where('country_id', $locked->id)->count();
             if ($statesCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this country because states exist under it.',
+                    "Cannot delete {$locked->name} because {$statesCount} state(s) still exist under it. Delete those states first.",
                     [
                         'reason' => 'has_states',
                         'states_count' => $statesCount,
@@ -80,10 +63,10 @@ class GuardedRecordDeletionService
                 );
             }
 
-            $usersCount = $this->usersCount('country_id', $locked->id);
+            $usersCount = $this->memberUsersCount('country_id', $locked->id);
             if ($usersCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this country because users are associated with this location.',
+                    "Cannot delete {$locked->name} because {$usersCount} registered member(s) are associated with this country. Admin accounts do not block delete.",
                     [
                         'reason' => 'has_users',
                         'users_count' => $usersCount,
@@ -91,6 +74,7 @@ class GuardedRecordDeletionService
                 );
             }
 
+            $this->detachAdminsFromLocation('country_id', $locked->id);
             $this->deleteOrConflict($locked, 'Cannot delete this country because related data still exists.');
         });
     }
@@ -107,7 +91,7 @@ class GuardedRecordDeletionService
             $districtsCount = (int) City::query()->where('region_id', $locked->id)->count();
             if ($districtsCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this state because districts exist under it.',
+                    "Cannot delete {$locked->name} because {$districtsCount} district(s) still exist under it. Delete those districts first.",
                     [
                         'reason' => 'has_districts',
                         'districts_count' => $districtsCount,
@@ -115,10 +99,10 @@ class GuardedRecordDeletionService
                 );
             }
 
-            $usersCount = $this->usersCount('region_id', $locked->id);
+            $usersCount = $this->memberUsersCount('region_id', $locked->id);
             if ($usersCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this state because users are associated with this location.',
+                    "Cannot delete {$locked->name} because {$usersCount} registered member(s) are associated with this state. Admin accounts do not block delete.",
                     [
                         'reason' => 'has_users',
                         'users_count' => $usersCount,
@@ -126,6 +110,7 @@ class GuardedRecordDeletionService
                 );
             }
 
+            $this->detachAdminsFromLocation('region_id', $locked->id);
             $this->deleteOrConflict($locked, 'Cannot delete this state because related data still exists.');
         });
     }
@@ -139,10 +124,10 @@ class GuardedRecordDeletionService
                 throw new GuardedDeletionException('District not found.', ['reason' => 'not_found'], 404);
             }
 
-            $usersCount = $this->usersCount('city_id', $locked->id);
+            $usersCount = $this->memberUsersCount('city_id', $locked->id);
             if ($usersCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this district because users are registered in this location.',
+                    "Cannot delete {$locked->name} because {$usersCount} registered member(s) are in this district. The admin account does not count as a member.",
                     [
                         'reason' => 'has_users',
                         'users_count' => $usersCount,
@@ -150,46 +135,60 @@ class GuardedRecordDeletionService
                 );
             }
 
-            $mappingsCount = (int) DB::table('city_whatsapp_groups')
-                ->where('city_id', $locked->id)
-                ->count();
-            if ($mappingsCount > 0) {
+            $legacyMembersCount = $this->legacyCommunityGroupMembersInCity($locked->id);
+            if ($legacyMembersCount > 0) {
                 throw new GuardedDeletionException(
-                    'Cannot delete this district because WhatsApp groups are mapped to this location.',
-                    [
-                        'reason' => 'has_whatsapp_mappings',
-                        'mappings_count' => $mappingsCount,
-                    ]
-                );
-            }
-
-            $legacyCount = $this->legacyCommunityGroupsCount($locked->id);
-            if ($legacyCount > 0) {
-                throw new GuardedDeletionException(
-                    'Cannot delete this district because related community records still exist.',
+                    "Cannot delete {$locked->name} because related community records still have members.",
                     [
                         'reason' => 'has_legacy_community_groups',
-                        'legacy_community_groups_count' => $legacyCount,
+                        'legacy_community_groups_count' => $legacyMembersCount,
                     ]
                 );
             }
 
+            $this->deleteEmptyLegacyCommunityGroups($locked->id);
+            $this->detachAdminsFromLocation('city_id', $locked->id);
             $this->deleteOrConflict($locked, 'Cannot delete this district because related data still exists.');
         });
     }
 
-    private function usersCount(string $column, int $id): int
+    private function memberUsersCount(string $column, int $id): int
     {
-        return (int) User::withTrashed()->where($column, $id)->count();
+        return (int) User::withTrashed()->notAdmin()->where($column, $id)->count();
     }
 
-    private function legacyCommunityGroupsCount(int $cityId): int
+    private function detachAdminsFromLocation(string $column, int $id): void
     {
-        if (! Schema::hasTable('community_groups')) {
+        User::withTrashed()
+            ->admins()
+            ->where($column, $id)
+            ->update([$column => null]);
+    }
+
+    private function legacyCommunityGroupMembersInCity(int $cityId): int
+    {
+        if (! Schema::hasTable('community_groups') || ! Schema::hasTable('community_members')) {
             return 0;
         }
 
-        return (int) CommunityGroup::withTrashed()->where('city_id', $cityId)->count();
+        return (int) DB::table('community_members')
+            ->join('community_groups', 'community_groups.id', '=', 'community_members.community_group_id')
+            ->where('community_groups.city_id', $cityId)
+            ->count();
+    }
+
+    private function deleteEmptyLegacyCommunityGroups(int $cityId): void
+    {
+        if (! Schema::hasTable('community_groups')) {
+            return;
+        }
+
+        CommunityGroup::withTrashed()
+            ->where('city_id', $cityId)
+            ->get()
+            ->each(function (CommunityGroup $group) {
+                $group->forceDelete();
+            });
     }
 
     private function deleteOrConflict(Country|Region|City|WhatsAppGroup $record, string $fallbackMessage): void

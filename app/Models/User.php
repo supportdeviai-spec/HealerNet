@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -111,6 +112,13 @@ class User extends Authenticatable
         return $this->belongsTo(Category::class);
     }
 
+    public function categories(): BelongsToMany
+    {
+        return $this->belongsToMany(Category::class, 'user_categories')
+            ->withTimestamps()
+            ->orderBy('user_categories.id');
+    }
+
     public function communities(): BelongsToMany
     {
         return $this->belongsToMany(CommunityGroup::class, 'community_members')
@@ -204,6 +212,25 @@ class User extends Authenticatable
         }
 
         return false;
+    }
+
+    /**
+     * Member / practitioner accounts. Admin staff are excluded so their
+     * profile location does not block Location Management deletes.
+     */
+    public function scopeNotAdmin(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('roles', fn (Builder $roles) => $roles->where('slug', 'admin'))
+            ->whereDoesntHave('role', fn (Builder $role) => $role->where('slug', 'admin'));
+    }
+
+    public function scopeAdmins(Builder $query): Builder
+    {
+        return $query->where(function (Builder $inner) {
+            $inner->whereHas('roles', fn (Builder $roles) => $roles->where('slug', 'admin'))
+                ->orWhereHas('role', fn (Builder $role) => $role->where('slug', 'admin'));
+        });
     }
 
     /**

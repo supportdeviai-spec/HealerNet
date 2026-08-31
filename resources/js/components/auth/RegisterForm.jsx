@@ -4,6 +4,7 @@ import { apiFetch } from '../../services/api';
 import { locationApi } from '../../services/locationApi';
 import LocationPicker, { useLocationPickerState } from '../location/LocationPicker';
 import { useCountries } from '../../hooks/useCountries';
+import CategorySelect2, { MAX_CATEGORIES } from '../common/CategorySelect2';
 import { CheckCircle2, Loader2, Send } from 'lucide-react';
 
 const LABEL = 'block text-xs font-bold uppercase tracking-wider text-[#0F382C] dark:text-emerald-200 mb-1.5';
@@ -277,7 +278,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
   const { countries } = useCountries();
 
   const [formData, setFormData] = useState({
-    categoryId: '',
+    categoryIds: [],
     title: '',
     name: '',
     businessName: '',
@@ -484,8 +485,13 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
       return;
     }
 
-    if (!formData.categoryId) {
-      setFormError('Please select a healthcare category.');
+    if (!formData.categoryIds.length) {
+      setFormError('Please select at least one healthcare category.');
+      return;
+    }
+
+    if (formData.categoryIds.length > MAX_CATEGORIES) {
+      setFormError(`You may select up to ${MAX_CATEGORIES} categories.`);
       return;
     }
 
@@ -526,13 +532,15 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
     let registrationSucceeded = false;
 
     try {
-      const selectedCategory = categories.find((cat) => String(cat.id) === String(formData.categoryId));
+      const selectedCategories = categories.filter((cat) =>
+        formData.categoryIds.map(String).includes(String(cat.id))
+      );
 
       const payload = {
         country_id: parseInt(countryId, 10),
         region_id: parseInt(regionId, 10),
         city_id: parseInt(cityId, 10),
-        category_id: formData.categoryId,
+        category_ids: formData.categoryIds,
         title: formData.title || null,
         name: fullName,
         business_name: businessName || null,
@@ -558,11 +566,15 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           user: data.user,
           community: data.community,
           community_groups: data.community_groups || [],
+          category_community_groups: data.category_community_groups || [],
           country_name: data.user?.country?.name || '',
           region_name: data.user?.region?.name || data.user?.state?.name || '',
           state_name: data.user?.region?.name || data.user?.state?.name || '',
           city_name: data.user?.city?.name || '',
-          category_name: selectedCategory?.name || data.user?.category?.name || '',
+          category_name: selectedCategories.map((cat) => cat.name).join(', ')
+            || data.user?.categories?.map((cat) => cat.name).join(', ')
+            || data.user?.category?.name
+            || '',
         };
 
         sessionStorage.setItem('healernet_registration', JSON.stringify(registrationResult));
@@ -630,22 +642,15 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
         </div>
 
         <div>
-          <label className={LABEL}>
-            Category <span className="text-rose-500">*</span>
-          </label>
-          <select
-            value={formData.categoryId}
-            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+          <CategorySelect2
+            categories={categories}
+            selectedIds={formData.categoryIds}
+            onChange={(categoryIds) => setFormData({ ...formData, categoryIds })}
             disabled={loadingCategories}
-            className={SELECT}
-            required
-          >
-            <option value="">{loadingCategories ? 'Loading categories…' : 'Select Category'}</option>
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>{cat.name}</option>
-            ))}
-          </select>
-          {fieldErrors.category_id && <p className={FIELD_ERROR}>{fieldErrors.category_id[0]}</p>}
+            label="Category"
+            labelClassName={LABEL}
+            error={fieldErrors.category_ids?.[0] || fieldErrors.category_id?.[0] || ''}
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-[7.5rem_minmax(0,1fr)] gap-3">

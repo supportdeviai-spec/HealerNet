@@ -181,8 +181,8 @@ class DashboardController extends Controller
                 'category' => $category ? $category->name : ($whatsappGroup->category ?? 'General Health'),
                 'current_members' => $whatsappGroup->current_members ?? 187,
                 'members' => $whatsappGroup->current_members ?? 187,
-                'max_members' => $whatsappGroup->capacity ?? $whatsappGroup->max_members ?? 200,
-                'max' => $whatsappGroup->capacity ?? $whatsappGroup->max_members ?? 200,
+                'max_members' => $whatsappGroup->capacity ?? $whatsappGroup->max_members ?? \App\Models\WhatsAppGroup::MAX_MEMBERS,
+                'max' => $whatsappGroup->capacity ?? $whatsappGroup->max_members ?? \App\Models\WhatsAppGroup::MAX_MEMBERS,
                 'joined' => !is_null($user->joined_whatsapp_at),
                 'assigned_date' => $user->created_at ? $user->created_at->format('d M Y') : '12 Mar 2024',
                 'assignedDate' => $user->created_at ? $user->created_at->format('d M Y') : '12 Mar 2024',
@@ -246,10 +246,10 @@ class DashboardController extends Controller
                 $user->whatsappGroups()->attach($group->id, ['joined_at' => now()]);
             }
 
-            if ($group->current_members < ($group->max_members ?? 250)) {
+            if ($group->current_members < ($group->max_members ?? \App\Models\WhatsAppGroup::MAX_MEMBERS)) {
                 $group->increment('current_members');
                 $group->refresh();
-                if ($group->current_members >= ($group->max_members ?? 250)) {
+                if ($group->current_members >= ($group->max_members ?? \App\Models\WhatsAppGroup::MAX_MEMBERS)) {
                     $group->update(['status' => 'full']);
                 }
             }

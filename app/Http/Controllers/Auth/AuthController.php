@@ -12,8 +12,10 @@ use App\Services\ActivityLogger;
 use App\Services\AdminAlertService;
 use App\Services\EmailService;
 use App\Notifications\Admin\PasswordResetRequestedAdminNotification;
+use App\Rules\ActiveUserCategories;
 use App\Services\CommunityAssignmentService;
-use App\Services\LocationService;
+use App\Services\UserCategoryService;
+use App\Services\WhatsAppGroupResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,8 +29,12 @@ class AuthController extends Controller
 {
     protected EmailService $emailService;
 
-    public function __construct(EmailService $emailService)
-    {
+    public function __construct(
+        EmailService $emailService,
+        protected UserCategoryService $userCategoryService,
+        protected CommunityAssignmentService $communityAssignment,
+        protected WhatsAppGroupResolver $groupResolver,
+    ) {
         $this->emailService = $emailService;
     }
 
@@ -56,7 +62,7 @@ class AuthController extends Controller
                     Log::warning('Failed to log activity on login: ' . $e->getMessage());
                 }
 
-        $user->load(['role', 'roles', 'category']);
+        $user->load(['role', 'roles', 'category', 'categories']);
 
                 return response()->json([
                     'status' => 'success',
@@ -87,7 +93,8 @@ class AuthController extends Controller
                 'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
                 'password' => ['nullable', 'string', 'min:8'],
                 'mobile' => ['required', 'string', User::uniqueMobileRule()],
-                'category_id' => ['required', 'uuid', 'exists:categories,id'],
+                'category_ids' => ['sometimes', 'array', new ActiveUserCategories(requirePrimaryWhatsAppGroup: true)],
+                'category_id' => ['required_without:category_ids', 'nullable', 'uuid', 'exists:categories,id'],
                 'country_id' => ['required', 'integer', 'exists:countries,id'],
                 'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],
                 'state_id' => ['required_without:region_id', 'integer', 'exists:regions,id'],
@@ -149,15 +156,41 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Category validation
-        $categoryValid = \App\Models\Category::where('id', $validated['category_id'])
+        $categoryIds = $this->resolveRegistrationCategoryIds($validated);
+        if ($categoryIds->isEmpty()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Please select at least one healthcare category.',
+                'errors' => ['category_ids' => ['Please select at least one healthcare category.']],
+            ], 422);
+        }
+
+        $categoryValid = \App\Models\Category::query()
+            ->whereIn('id', $categoryIds)
             ->active()
-            ->exists();
+            ->count() === $categoryIds->count();
         if (!$categoryValid) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'The selected healthcare category is invalid or inactive.'
             ], 422);
+        }
+
+        foreach ($categoryIds as $categoryId) {
+            if (!$this->groupResolver->forCategory((string) $categoryId)) {
+                Log::warning('Registration rejected: no eligible primary WhatsApp group for category.', [
+                    'category_id' => $categoryId,
+                    'email' => $validated['email'],
+                ]);
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Selected category is currently unavailable, please choose another.',
+                    'errors' => [
+                        'category_ids' => ['Selected category is currently unavailable, please choose another.'],
+                    ],
+                ], 422);
+            }
         }
 
         // Security: Ensure Email OTP has been verified
@@ -188,7 +221,7 @@ class AuthController extends Controller
             'mobile' => $validated['mobile'],
             'password' => Hash::make($rawPassword),
             'role_id' => $userRole ? $userRole->id : null,
-            'category_id' => $validated['category_id'],
+            'category_id' => $categoryIds->first(),
             'country_id' => $validated['country_id'],
             'region_id' => $validated['region_id'],
             'city_id' => $validated['city_id'],
@@ -203,11 +236,10 @@ class AuthController extends Controller
             ]);
         }
 
+        $this->userCategoryService->sync($user, $categoryIds->all());
+
         // Auto Assignment Logic for WhatsApp Cohort
-        if (class_exists(CommunityAssignmentService::class)) {
-            $assignmentService = new CommunityAssignmentService();
-            $assignmentService->autoAssign($user);
-        }
+        $this->communityAssignment->autoAssign($user);
 
         if (method_exists(Auth::guard(), 'login')) {
             Auth::login($user);
@@ -230,14 +262,17 @@ class AuthController extends Controller
             Log::warning('Failed to dispatch UserRegistered event: ' . $e->getMessage());
         }
 
-        $user->load(['role', 'category', 'country', 'state', 'city', 'communities', 'whatsappGroups', 'profile']);
+        $user->load(['role', 'category', 'categories', 'country', 'state', 'city', 'communities', 'whatsappGroups', 'profile']);
 
-        $communityGroups = $this->resolveRegistrationCommunityGroups($user);
+        $categoryCommunityGroups = $this->formatCategoryCommunityGroups(
+            $this->communityAssignment->findGroupsForUserCategories($user)
+        );
 
-        $community = $user->communities->first(fn ($g) => $this->groupWhatsappUrl($g));
-        if (!$community) {
-            $community = $communityGroups->first(fn ($g) => $this->groupWhatsappUrl($g));
-        }
+        $communityGroups = $categoryCommunityGroups
+            ->filter(fn (array $row) => !empty($row['whatsapp_url']))
+            ->values();
+
+        $community = $communityGroups->first();
 
         return response()->json([
             'status' => 'success',
@@ -246,41 +281,53 @@ class AuthController extends Controller
             'token' => $token,
             'user' => $user,
             'community' => $community ? [
-                'id' => $community->id,
-                'name' => $community->name,
-                'whatsapp_link' => $this->groupWhatsappUrl($community),
-                'whatsapp_url' => $this->groupWhatsappUrl($community),
+                'id' => $community['id'] ?? null,
+                'name' => $community['name'] ?? null,
+                'whatsapp_link' => $community['whatsapp_url'] ?? null,
+                'whatsapp_url' => $community['whatsapp_url'] ?? null,
             ] : null,
-            'community_groups' => $communityGroups->map(fn ($group) => [
-                'id' => $group->id,
-                'name' => $group->name,
-                'description' => $group->description,
-                'whatsapp_url' => $this->groupWhatsappUrl($group),
-                'display_order' => $group->display_order,
-                'category_id' => $group->category_id,
+            'community_groups' => $communityGroups->map(fn (array $group) => [
+                'id' => $group['id'] ?? null,
+                'name' => $group['name'] ?? null,
+                'description' => $group['description'] ?? null,
+                'whatsapp_url' => $group['whatsapp_url'] ?? null,
+                'display_order' => $group['display_order'] ?? 0,
+                'category_id' => $group['category_id'] ?? null,
+                'category_name' => $group['category_name'] ?? null,
             ])->values(),
+            'category_community_groups' => $categoryCommunityGroups,
         ], 201);
     }
 
-    private function resolveRegistrationCommunityGroups(User $user): \Illuminate\Support\Collection
+    private function resolveRegistrationCategoryIds(array $validated): \Illuminate\Support\Collection
     {
-        $locationService = app(LocationService::class);
-        $cityGroups = collect($locationService->listCommunityGroupsForPublic((int) $user->city_id))
-            ->map(fn (array $group) => (object) $group)
-            ->filter(fn ($group) => (bool) $this->groupWhatsappUrl($group));
+        if (!empty($validated['category_ids']) && is_array($validated['category_ids'])) {
+            return collect($validated['category_ids'])->filter()->unique()->values();
+        }
 
-        $assigned = $user->whatsappGroups
-            ->filter(fn ($group) => ($group->status ?? 'active') === 'active')
-            ->filter(fn ($group) => (bool) $this->groupWhatsappUrl($group));
+        if (!empty($validated['category_id'])) {
+            return collect([$validated['category_id']]);
+        }
 
-        return $cityGroups->merge($assigned)->unique('id')->values();
+        return collect();
     }
 
-    private function groupWhatsappUrl(object $group): ?string
+    private function formatCategoryCommunityGroups(\Illuminate\Support\Collection $rows): \Illuminate\Support\Collection
     {
-        $url = $group->whatsapp_url ?? $group->whatsapp_link ?? null;
+        return $rows->map(function (array $row) {
+            $group = $row['group'] ?? null;
 
-        return $url ? trim((string) $url) : null;
+            return [
+                'category_id' => $row['category_id'],
+                'category_name' => $row['category_name'],
+                'status' => $row['status'],
+                'message' => $row['message'] ?? null,
+                'id' => $group?->id,
+                'name' => $group?->name,
+                'description' => $group?->description,
+                'whatsapp_url' => $group?->whatsapp_url,
+            ];
+        })->values();
     }
 
     public function sendEmailOtp(Request $request): JsonResponse
@@ -511,7 +558,7 @@ class AuthController extends Controller
         return response()->json([
             'status' => 'success',
             'success' => true,
-            'user' => $user->load(['role', 'roles', 'category', 'country', 'state', 'city', 'communities']),
+            'user' => $user->load(['role', 'roles', 'category', 'categories', 'country', 'state', 'city', 'communities']),
             'permissions' => $user->permissionSlugs(),
         ]);
     }

@@ -4,17 +4,14 @@ namespace App\Services;
 
 use App\Enums\Status;
 use App\Models\City;
-use App\Models\CityWhatsAppGroup;
 use App\Models\CommunityGroup;
 use App\Models\Country;
 use App\Models\Region;
-use App\Models\WhatsAppGroup;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class LocationService
 {
@@ -77,79 +74,7 @@ class LocationService
 
     public function listCommunityGroupsForPublic(int $cityId): SupportCollection
     {
-        if (!City::active()
-            ->whereKey($cityId)
-            ->whereHas('region', fn (Builder $q) => $q
-                ->where('status', Status::ACTIVE)
-                ->whereHas('country', fn (Builder $cq) => $cq->where('status', Status::ACTIVE)))
-            ->exists()) {
-            return new Collection();
-        }
-
-        return CityWhatsAppGroup::query()
-            ->where('city_whatsapp_groups.status', 'active')
-            ->where('city_whatsapp_groups.city_id', $cityId)
-            ->whereHas('whatsappGroup', fn (Builder $q) => $q->where('whatsapp_groups.status', 'active'))
-            ->with(['whatsappGroup.category:id,name'])
-            ->orderBy('display_order')
-            ->get()
-            ->map(fn (CityWhatsAppGroup $mapping) => $this->formatPublicCommunityGroup($mapping))
-            ->sortBy('display_order')
-            ->values();
-    }
-
-    public function formatPublicCommunityGroup(CityWhatsAppGroup $mapping): array
-    {
-        $group = $mapping->whatsappGroup;
-
-        return [
-            'id' => $group?->id,
-            'city_id' => $mapping->city_id,
-            'category_id' => $group?->category_id,
-            'name' => $group?->name,
-            'description' => $group?->description,
-            'whatsapp_url' => $group?->whatsapp_url,
-            'display_order' => $mapping->display_order,
-            'category' => $group?->category ? [
-                'id' => $group->category->id,
-                'name' => $group->category->name,
-            ] : null,
-        ];
-    }
-
-    public function formatCityWhatsAppGroup(CityWhatsAppGroup $mapping): array
-    {
-        $mapping->loadMissing(['city.region.country', 'whatsappGroup.category']);
-        $group = $mapping->whatsappGroup;
-        $city = $mapping->city;
-
-        $membersCount = 0;
-        if ($mapping->whatsapp_group_id && $mapping->city_id) {
-            $membersCount = (int) DB::table('community_members')
-                ->join('users', 'users.id', '=', 'community_members.user_id')
-                ->where('community_members.whatsapp_group_id', $mapping->whatsapp_group_id)
-                ->where('users.city_id', $mapping->city_id)
-                ->count();
-        }
-
-        return [
-            'id' => $mapping->id,
-            'city_id' => $mapping->city_id,
-            'whatsapp_group_id' => $mapping->whatsapp_group_id,
-            'display_order' => $mapping->display_order,
-            'status' => $mapping->status,
-            'city' => $city,
-            'whatsapp_group' => $group,
-            'name' => $group?->name,
-            'category' => $group?->category,
-            'category_name' => $group?->category?->name,
-            'whatsapp_url' => $group?->whatsapp_url,
-            'country_name' => $city?->region?->country?->name,
-            'region_name' => $city?->region?->name,
-            'state_name' => $city?->region?->name,
-            'members_count' => $membersCount,
-            'can_delete' => $membersCount === 0,
-        ];
+        return collect();
     }
 
     public function paginateCountries(array $filters = [], int $perPage = 15): LengthAwarePaginator
@@ -158,7 +83,7 @@ class LocationService
         $query = Country::query()
             ->withCount([
                 'regions',
-                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+                'users as users_count' => fn (Builder $q) => $q->withTrashed()->notAdmin(),
             ])
             ->orderBy('name');
 
@@ -183,7 +108,7 @@ class LocationService
         $query = Region::with('country:id,name,code')
             ->withCount([
                 'cities',
-                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+                'users as users_count' => fn (Builder $q) => $q->withTrashed()->notAdmin(),
             ])
             ->orderBy('name');
 
@@ -207,12 +132,10 @@ class LocationService
         $filters = $this->normalizeFilters($filters);
         $query = City::with([
             'region.country:id,name',
-            'activeWhatsappGroups:id,name,whatsapp_url,status',
         ])
             ->withCount([
-                'cityWhatsappGroups',
                 'communityGroups',
-                'users as users_count' => fn (Builder $q) => $q->withTrashed(),
+                'users as users_count' => fn (Builder $q) => $q->withTrashed()->notAdmin(),
             ])
             ->orderBy('name');
 
@@ -233,45 +156,6 @@ class LocationService
         }
 
         return $query->paginate($perPage);
-    }
-
-    public function paginateCommunityGroups(array $filters = [], int $perPage = 15): LengthAwarePaginator
-    {
-        $filters = $this->normalizeFilters($filters);
-        $query = CityWhatsAppGroup::with([
-            'city.region.country:id,name',
-            'whatsappGroup.category:id,name',
-        ])
-            ->orderBy('display_order')
-            ->orderBy('id');
-
-        if (!empty($filters['country_id'])) {
-            $query->whereHas('city.region', fn (Builder $q) => $q->where('country_id', $filters['country_id']));
-        }
-
-        if (!empty($filters['region_id'])) {
-            $query->whereHas('city', fn (Builder $q) => $q->where('region_id', $filters['region_id']));
-        }
-
-        if (!empty($filters['city_id'])) {
-            $query->where('city_id', $filters['city_id']);
-        }
-
-        if (!empty($filters['search'])) {
-            $search = $filters['search'];
-            $query->whereHas('whatsappGroup', fn (Builder $q) => $q->where('name', 'like', "%{$search}%"));
-        }
-
-        if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
-        }
-
-        $paginator = $query->paginate($perPage);
-        $paginator->getCollection()->transform(
-            fn (CityWhatsAppGroup $mapping) => $this->formatCityWhatsAppGroup($mapping)
-        );
-
-        return $paginator;
     }
 
     /**

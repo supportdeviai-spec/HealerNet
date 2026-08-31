@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Category;
 use App\Models\Country;
-use App\Models\CityWhatsAppGroup;
 use App\Models\WhatsAppGroup;
 use App\Services\AdminAnalyticsService;
 use Illuminate\Http\JsonResponse;
@@ -34,9 +33,8 @@ class AdminDashboardController extends Controller
 
             'active_communities' => WhatsAppGroup::where('status', 'active')->count(),
             'full_communities' => WhatsAppGroup::where('status', 'full')->count(),
-            // Match Group Management page total (all city↔group mappings)
-            'community_count' => CityWhatsAppGroup::count(),
-            'group_management_count' => CityWhatsAppGroup::count(),
+            'community_count' => WhatsAppGroup::count(),
+            'group_management_count' => WhatsAppGroup::where('is_primary', true)->count(),
             'total_countries' => Country::where('status', 'active')->count(),
             'total_categories' => Category::count(),
 

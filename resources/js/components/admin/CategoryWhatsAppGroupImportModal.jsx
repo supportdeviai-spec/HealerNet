@@ -1,31 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, History, Trash2, Upload } from 'lucide-react';
-import { locationApi } from '../../services/locationApi';
+import { categoryImportApi } from '../../services/categoryImportApi';
 import { usePermissions } from '../../hooks/usePermissions';
-import {
-  BRAND,
-  Button,
-  FONT_DISPLAY,
-  Modal,
-  Pagination,
-} from './AdminShared';
+import { BRAND, Button, FONT_DISPLAY, Modal, Pagination } from './AdminShared';
 
-export const WHATSAPP_IMPORT_PERMISSIONS = [
-  'countries.create',
-  'states.create',
-  'cities.create',
-];
+export const CATEGORY_WHATSAPP_GROUP_IMPORT_PERMISSIONS = ['whatsapp-groups.create'];
 
 const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
 const POLL_MS = 3000;
 const TERMINAL_STATUSES = ['ready', 'completed', 'completed_with_errors', 'failed'];
 
-function ImportProgress({ t, title, subtitle, processed, total, success, failed, status, percent }) {
+function ImportProgress({ t, processed, total, success, failed, status, percent }) {
   const width = Math.max(0, Math.min(100, Number(percent) || 0));
   return (
     <div className="rounded-xl border px-4 py-4 space-y-3" style={{ borderColor: t.border, background: t.surfaceAlt }}>
-      <div className="font-semibold" style={{ color: t.text, fontFamily: FONT_DISPLAY }}>{title}</div>
-      {subtitle && <div className="text-sm" style={{ color: t.textMuted }}>{subtitle}</div>}
+      <div className="font-semibold" style={{ color: t.text, fontFamily: FONT_DISPLAY }}>Import in progress</div>
       <div className="h-3 rounded-full overflow-hidden" style={{ background: t.border }}>
         <div className="h-full rounded-full transition-all" style={{ width: `${width}%`, background: BRAND.primary }} />
       </div>
@@ -43,11 +32,7 @@ function ImportProgress({ t, title, subtitle, processed, total, success, failed,
 }
 
 function Stat({ t, label, value, tone }) {
-  const color = tone === 'danger'
-    ? BRAND.danger
-    : tone === 'ok'
-      ? BRAND.ok
-      : t.text;
+  const color = tone === 'danger' ? BRAND.danger : tone === 'ok' ? BRAND.ok : t.text;
   return (
     <div className="rounded-xl border px-3 py-2.5" style={{ borderColor: t.border, background: t.surfaceAlt }}>
       <div className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: t.textFaint }}>{label}</div>
@@ -64,7 +49,7 @@ function IssueList({ t, issues }) {
         <thead>
           <tr className="text-left" style={{ background: t.surfaceAlt, color: t.textMuted }}>
             <th className="px-3 py-2 font-semibold">Row</th>
-            <th className="px-3 py-2 font-semibold">Location</th>
+            <th className="px-3 py-2 font-semibold">Category</th>
             <th className="px-3 py-2 font-semibold">Group</th>
             <th className="px-3 py-2 font-semibold">Reason</th>
           </tr>
@@ -73,13 +58,11 @@ function IssueList({ t, issues }) {
           {issues.map((issue, index) => (
             <tr key={`${issue.excel_row}-${index}`} className="border-t" style={{ borderColor: t.border }}>
               <td className="px-3 py-2 align-top" style={{ color: t.text }}>{issue.excel_row}</td>
-              <td className="px-3 py-2 align-top" style={{ color: t.textMuted }}>
-                {[issue.country, issue.state, issue.district].filter(Boolean).join(' / ') || '—'}
-              </td>
+              <td className="px-3 py-2 align-top" style={{ color: t.textMuted }}>{issue.category_name || '—'}</td>
               <td className="px-3 py-2 align-top" style={{ color: t.textMuted }}>{issue.group_name || '—'}</td>
               <td className="px-3 py-2 align-top">
-                <span style={{ color: issue.type === 'conflict' ? BRAND.amber : issue.type === 'duplicate' ? t.textMuted : BRAND.danger }}>
-                  {issue.type === 'conflict' ? 'Conflict: ' : issue.type === 'duplicate' ? 'Skipped: ' : 'Error: '}
+                <span style={{ color: issue.type === 'superseded' ? t.textMuted : BRAND.danger }}>
+                  {issue.type === 'superseded' ? 'Superseded: ' : 'Error: '}
                   {issue.reason}
                 </span>
               </td>
@@ -91,7 +74,7 @@ function IssueList({ t, issues }) {
   );
 }
 
-export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, onImported, onViewHistory }) {
+export default function CategoryWhatsAppGroupImportModal({ t, toast, open, onClose, onImported, onViewHistory }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -99,16 +82,16 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  const [history, setHistory] = useState([]);
   const [previewToken, setPreviewToken] = useState(null);
   const [previewProgress, setPreviewProgress] = useState(null);
   const [activeImport, setActiveImport] = useState(null);
+  const [history, setHistory] = useState([]);
 
   const busy = loading || confirming || ['queued', 'processing'].includes(activeImport?.status);
 
   const loadHistory = async () => {
     try {
-      const json = await locationApi.adminListWhatsAppCommunityImports({ limit: 5 });
+      const json = await categoryImportApi.adminListCategoryWhatsAppGroupImports({ limit: 5 });
       setHistory(Array.isArray(json.data) ? json.data.slice(0, 5) : []);
     } catch {
       setHistory([]);
@@ -152,16 +135,12 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
     }
     setActiveImport(null);
     setPreview(null);
-    setResult({
-      ...payload,
-      summary: payload.summary,
-      issues: payload.issues || [],
-    });
+    setResult({ ...payload, summary: payload.summary, issues: payload.issues || [] });
     setConfirming(false);
     if (payload.status === 'failed') {
       setError(payload.error_message || 'Import failed.');
     } else {
-      toast?.(message || (payload.status === 'completed_with_errors' ? 'Import completed with errors.' : 'Import completed successfully.'), payload.status === 'completed_with_errors' ? 'error' : 'success');
+      toast?.(message || 'WhatsApp groups imported successfully.', payload.status === 'completed_with_errors' ? 'error' : 'success');
       onImported?.();
       loadHistory();
     }
@@ -173,7 +152,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
     let cancelled = false;
     const tick = async () => {
       try {
-        const json = await locationApi.adminPreviewWhatsAppCommunityImportStatus(previewToken);
+        const json = await categoryImportApi.adminPreviewCategoryWhatsAppGroupImportStatus(previewToken);
         if (cancelled) return;
         const status = applyPreviewPayload(json.data || json);
         if (TERMINAL_STATUSES.includes(status) || status === 'ready' || status === 'failed') {
@@ -197,19 +176,13 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
 
   useEffect(() => {
     if (!open || !activeImport?.history_id) return undefined;
-    if (TERMINAL_STATUSES.includes(activeImport.status) && activeImport.status !== 'queued' && activeImport.status !== 'processing') {
-      return undefined;
-    }
     if (!['queued', 'processing'].includes(activeImport.status)) return undefined;
     let cancelled = false;
     const tick = async () => {
       try {
-        const json = await locationApi.adminWhatsAppCommunityImportStatus(activeImport.history_id);
+        const json = await categoryImportApi.adminCategoryWhatsAppGroupImportStatus(activeImport.history_id);
         if (cancelled) return;
-        const status = applyImportPayload(json.data || json);
-        if (['completed', 'completed_with_errors', 'failed'].includes(status)) {
-          /* polling stops because activeImport.status updates */
-        }
+        applyImportPayload(json.data || json);
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Could not load import status.');
       }
@@ -245,7 +218,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
   const issues = preview?.issues || result?.issues || activeImport?.issues || [];
   const actionableRows = Math.max(
     0,
-    (summary?.total_rows ?? 0) - (summary?.errors ?? 0) - (summary?.conflicts ?? 0) - (summary?.skipped_duplicates ?? 0)
+    (summary?.imported ?? 0) + (summary?.updated ?? 0) + (summary?.skipped ?? 0)
   );
 
   const runPreview = async (nextFile) => {
@@ -256,7 +229,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
     setActiveImport(null);
     setPreviewProgress(null);
     try {
-      const json = await locationApi.adminPreviewWhatsAppCommunityImport(nextFile);
+      const json = await categoryImportApi.adminPreviewCategoryWhatsAppGroupImport(nextFile);
       const data = json.data || json;
       const status = applyPreviewPayload(data);
       if (status === 'queued' || status === 'processing') {
@@ -274,7 +247,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
     setConfirming(true);
     setError(null);
     try {
-      const json = await locationApi.adminConfirmWhatsAppCommunityImport(preview.import_token);
+      const json = await categoryImportApi.adminConfirmCategoryWhatsAppGroupImport(preview.import_token);
       const data = json.data || json;
       const status = applyImportPayload(data, json.message);
       if (status === 'queued' || status === 'processing') {
@@ -288,12 +261,12 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
 
   const processing = ['queued', 'processing'].includes(activeImport?.status);
   const title = result
-    ? (result.status === 'completed_with_errors' ? 'Import completed with errors' : result.status === 'failed' ? 'Import failed' : 'Import completed successfully')
+    ? (result.status === 'completed_with_errors' ? 'Import completed with errors' : result.status === 'failed' ? 'Import failed' : 'Import completed')
     : processing
       ? 'Importing…'
       : preview
         ? 'Import preview'
-        : 'Import Excel';
+        : 'Import WhatsApp Groups';
 
   return (
     <Modal
@@ -314,27 +287,29 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
         ) : preview ? (
           <>
             <Button variant="outline" onClick={reset} disabled={confirming} style={{ color: t.text, borderColor: t.border }}>
-              Cancel Import
+              Cancel
             </Button>
             <Button onClick={confirmImport} disabled={confirming || actionableRows <= 0}>
               Confirm Import
             </Button>
           </>
         ) : (
-          <Button variant="outline" onClick={close} style={{ color: t.text, borderColor: t.border }}>Close</Button>
+          <>
+            <Button variant="outline" onClick={close} style={{ color: t.text, borderColor: t.border }}>Cancel</Button>
+          </>
         )
       }
     >
       {!preview && !result && !processing && (
         <>
           <p className="text-sm mb-3" style={{ color: t.textMuted }}>
-            Upload one Excel file with columns: Country, State, District, and optional Status (Active or Inactive).
-            Existing locations are updated when the same country/state/district row appears again.
+            Upload an Excel file with columns: Category Name, Group Name, WhatsApp Link, Primary (Yes/No), and Status (Active/Inactive).
+            New categories are created automatically when the name does not exist yet. Existing groups with no changes are skipped; changed rows are updated.
           </p>
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             className="hidden"
             onChange={(e) => {
               const next = e.target.files?.[0];
@@ -347,6 +322,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
                 return;
               }
               setFile(next);
+              setError(null);
               runPreview(next);
             }}
           />
@@ -358,8 +334,8 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
             style={{ borderColor: t.border, background: t.surfaceAlt, color: t.text }}
           >
             <Upload size={22} className="mx-auto mb-2" style={{ color: BRAND.primary }} />
-            <div className="text-sm font-semibold">{loading ? 'Reading file…' : file ? file.name : 'Choose Excel or CSV file'}</div>
-            <div className="text-xs mt-1" style={{ color: t.textMuted }}>.xlsx, .xls, or .csv · max 200 MB</div>
+            <div className="text-sm font-semibold">{loading ? 'Reading file…' : file ? file.name : 'Choose Excel file'}</div>
+            <div className="text-xs mt-1" style={{ color: t.textMuted }}>.xlsx or .xls · max 200 MB</div>
           </button>
           <div className="mt-3 flex items-center justify-between gap-2">
             <Button
@@ -369,14 +345,14 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
               icon={Download}
               onClick={async () => {
                 try {
-                  await locationApi.adminDownloadWhatsAppImportTemplate();
+                  await categoryImportApi.adminDownloadCategoryWhatsAppGroupImportTemplate();
                 } catch (err) {
                   toast?.(err?.message || 'Could not download template', 'error');
                 }
               }}
               style={{ color: t.text, borderColor: t.border }}
             >
-              Download template
+              Download sample Excel
             </Button>
           </div>
           {history.length > 0 && (
@@ -414,7 +390,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
                         <td className="px-3 py-2 truncate max-w-[140px]" style={{ color: t.textMuted }} title={row.file_name}>{row.file_name}</td>
                         <td className="px-3 py-2" style={{ color: row.status === 'failed' ? BRAND.danger : row.status === 'completed_with_errors' || row.status === 'processing' || row.status === 'queued' ? BRAND.amber : BRAND.ok }}>{row.status}</td>
                         <td className="px-3 py-2" style={{ color: t.textMuted }}>
-                          {row.total_rows} rows · {row.created} created · {row.updated} updated · {row.skipped} skipped · {row.errors} errors · {row.conflicts} conflicts
+                          {row.total_rows} rows · {row.created} imported · {row.updated} updated · {row.skipped} skipped · {row.errors} failed
                         </td>
                       </tr>
                     ))}
@@ -422,7 +398,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
                 </table>
               </div>
               <p className="text-[11px] mt-2" style={{ color: t.textFaint }}>
-                History delete is on the Import History page. Deleting history does not delete imported locations.
+                History delete is on the Import History page. Deleting history does not delete imported WhatsApp groups.
               </p>
             </div>
           )}
@@ -432,8 +408,6 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
       {processing && activeImport && (
         <ImportProgress
           t={t}
-          title="Import queued successfully."
-          subtitle="The file is processing in the background. You can leave this window open to watch progress."
           processed={activeImport.processed_rows}
           total={activeImport.total_rows}
           success={activeImport.success_rows}
@@ -461,12 +435,10 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
               )}
               <div>
                 <div className="font-semibold" style={{ color: result.status === 'failed' ? BRAND.danger : result.status === 'completed_with_errors' ? BRAND.amber : BRAND.ok, fontFamily: FONT_DISPLAY }}>
-                  {result.status === 'failed' ? 'Import failed' : result.status === 'completed_with_errors' ? 'Import completed with errors' : 'Import completed successfully'}
+                  {result.status === 'failed' ? 'Import failed' : 'Import completed'}
                 </div>
                 <div className="text-sm mt-1" style={{ color: t.textMuted }}>
-                  {result.status === 'failed'
-                    ? (result.error_message || 'The import could not be completed.')
-                    : `Total rows: ${(result.total_rows ?? summary?.total_rows ?? 0).toLocaleString()} · Imported: ${(result.success_rows ?? actionableRows).toLocaleString()} · Failed: ${(result.failed_rows ?? summary?.errors ?? 0).toLocaleString()}`}
+                  Total Rows: {(summary.total_rows ?? 0).toLocaleString()} · Imported: {(summary.imported ?? 0).toLocaleString()} · Updated: {(summary.updated ?? 0).toLocaleString()} · Skipped: {(summary.skipped ?? 0).toLocaleString()} · Failed: {(summary.errors ?? 0).toLocaleString()}
                 </div>
               </div>
             </div>
@@ -477,14 +449,14 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
               <span>No valid rows to import. Fix the errors below and upload the file again.</span>
             </div>
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
             <Stat t={t} label="Total Rows" value={summary.total_rows ?? 0} />
-            <Stat t={t} label="Countries new / existing" value={`${summary.countries?.new ?? 0} / ${summary.countries?.existing ?? 0}`} />
-            <Stat t={t} label="States new / existing" value={`${summary.states?.new ?? 0} / ${summary.states?.existing ?? 0}`} />
-            <Stat t={t} label="Districts new / existing" value={`${summary.districts?.new ?? 0} / ${summary.districts?.existing ?? 0}`} />
-            <Stat t={t} label="District updates" value={summary.updated?.districts ?? 0} />
-            <Stat t={t} label="Duplicates" value={summary.skipped_duplicates ?? 0} />
-            <Stat t={t} label="Errors / Conflicts" value={`${summary.errors ?? 0} / ${summary.conflicts ?? 0}`} tone={(summary.errors || summary.conflicts) ? 'danger' : 'ok'} />
+            <Stat t={t} label="Categories new" value={summary.categories?.new ?? 0} tone="ok" />
+            <Stat t={t} label="Categories existing" value={summary.categories?.existing ?? 0} />
+            <Stat t={t} label="Groups imported" value={summary.imported ?? 0} tone="ok" />
+            <Stat t={t} label="Groups updated" value={summary.updated ?? 0} />
+            <Stat t={t} label="Skipped" value={summary.skipped ?? 0} />
+            <Stat t={t} label="Failed" value={summary.errors ?? 0} tone={(summary.errors ?? 0) ? 'danger' : undefined} />
           </div>
           <IssueList t={t} issues={issues} />
         </div>
@@ -493,7 +465,44 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
   );
 }
 
-export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose }) {
+export function CategoryWhatsAppGroupImportButton({ t, toast, onImported }) {
+  const { canAll } = usePermissions();
+  const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const allowed = useMemo(() => canAll(CATEGORY_WHATSAPP_GROUP_IMPORT_PERMISSIONS), [canAll]);
+
+  if (!allowed) return null;
+
+  return (
+    <>
+      <Button variant="outline" size="sm" icon={Upload} onClick={() => setOpen(true)} style={{ color: t.text, borderColor: t.border }}>
+        Import Excel
+      </Button>
+      <Button variant="outline" size="sm" icon={History} onClick={() => setHistoryOpen(true)} style={{ color: t.text, borderColor: t.border }}>
+        Import History
+      </Button>
+      <CategoryWhatsAppGroupImportModal
+        t={t}
+        toast={toast}
+        open={open}
+        onClose={() => setOpen(false)}
+        onImported={onImported}
+        onViewHistory={() => {
+          setOpen(false);
+          setHistoryOpen(true);
+        }}
+      />
+      <CategoryWhatsAppGroupImportHistoryModal
+        t={t}
+        toast={toast}
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      />
+    </>
+  );
+}
+
+export function CategoryWhatsAppGroupImportHistoryModal({ t, toast, open, onClose }) {
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, per_page: 10, total: 0 });
@@ -505,7 +514,7 @@ export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose })
   const load = async (nextPage = page) => {
     setLoading(true);
     try {
-      const json = await locationApi.adminListWhatsAppCommunityImports({ page: nextPage, per_page: pageSize });
+      const json = await categoryImportApi.adminListCategoryWhatsAppGroupImports({ page: nextPage, per_page: pageSize });
       setRows(Array.isArray(json.data) ? json.data : []);
       setMeta(json.meta || { current_page: nextPage, last_page: 1, per_page: pageSize, total: 0 });
     } catch (err) {
@@ -522,8 +531,8 @@ export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose })
   const deleteRow = async (row) => {
     setDeletingId(row.id);
     try {
-      await locationApi.adminDeleteWhatsAppCommunityImport(row.id);
-      toast?.('Import history deleted. Imported data was not changed.', 'success');
+      await categoryImportApi.adminDeleteCategoryWhatsAppGroupImport(row.id);
+      toast?.('Import history deleted. Imported WhatsApp groups were not changed.', 'success');
       setConfirmRow(null);
       const nextPage = rows.length === 1 && page > 1 ? page - 1 : page;
       if (nextPage !== page) setPage(nextPage);
@@ -537,70 +546,70 @@ export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose })
 
   return (
     <>
-    <Modal
-      t={t}
-      open={open}
-      onClose={onClose}
-      title="Import History"
-      width={860}
-      footer={<Button variant="outline" onClick={onClose} style={{ color: t.text, borderColor: t.border }}>Close</Button>}
-    >
-      <p className="text-sm mb-3" style={{ color: t.textMuted }}>
-        This is only the import log. Deleting a history row does not delete countries, states, or districts.
-      </p>
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: t.border }}>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left" style={{ background: t.surfaceAlt, color: t.textMuted }}>
-              <th className="px-3 py-2 font-semibold">Date</th>
-              <th className="px-3 py-2 font-semibold">Admin</th>
-              <th className="px-3 py-2 font-semibold">File</th>
-              <th className="px-3 py-2 font-semibold">Status</th>
-              <th className="px-3 py-2 font-semibold">Summary</th>
-              <th className="px-3 py-2 font-semibold text-right">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center" style={{ color: t.textMuted }}>Loading…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center" style={{ color: t.textMuted }}>No import history yet.</td></tr>
-            ) : rows.map((row) => (
-              <tr key={row.id} className="border-t" style={{ borderColor: t.border }}>
-                <td className="px-3 py-2" style={{ color: t.textMuted }}>{row.imported_at ? new Date(row.imported_at).toLocaleString() : '—'}</td>
-                <td className="px-3 py-2" style={{ color: t.text }}>{row.admin || '—'}</td>
-                <td className="px-3 py-2 truncate max-w-[160px]" style={{ color: t.textMuted }} title={row.file_name}>{row.file_name}</td>
-                <td className="px-3 py-2" style={{ color: row.status === 'failed' ? BRAND.danger : row.status === 'completed_with_errors' || row.status === 'processing' || row.status === 'queued' ? BRAND.amber : BRAND.ok }}>{row.status}</td>
-                <td className="px-3 py-2 text-xs" style={{ color: t.textMuted }}>
-                  {row.total_rows} rows · {row.created} created · {row.updated} updated · {row.errors} errors
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    icon={Trash2}
-                    disabled={!!deletingId}
-                    onClick={() => setConfirmRow(row)}
-                    style={{ color: BRAND.danger, borderColor: t.border }}
-                  >
-                    Delete
-                  </Button>
-                </td>
+      <Modal
+        t={t}
+        open={open}
+        onClose={onClose}
+        title="Import History"
+        width={860}
+        footer={<Button variant="outline" onClick={onClose} style={{ color: t.text, borderColor: t.border }}>Close</Button>}
+      >
+        <p className="text-sm mb-3" style={{ color: t.textMuted }}>
+          This is only the import log. Deleting a history row does not delete imported WhatsApp groups.
+        </p>
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: t.border }}>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left" style={{ background: t.surfaceAlt, color: t.textMuted }}>
+                <th className="px-3 py-2 font-semibold">Date</th>
+                <th className="px-3 py-2 font-semibold">Admin</th>
+                <th className="px-3 py-2 font-semibold">File</th>
+                <th className="px-3 py-2 font-semibold">Status</th>
+                <th className="px-3 py-2 font-semibold">Summary</th>
+                <th className="px-3 py-2 font-semibold text-right">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <Pagination
-          t={t}
-          page={meta.current_page || page}
-          totalPages={meta.last_page || 1}
-          onPage={setPage}
-          total={meta.total || 0}
-          pageSize={meta.per_page || pageSize}
-        />
-      </div>
-    </Modal>
-      <HistoryDeleteConfirm
+            </thead>
+            <tbody>
+              {loading && rows.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center" style={{ color: t.textMuted }}>Loading…</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={6} className="px-3 py-8 text-center" style={{ color: t.textMuted }}>No import history yet.</td></tr>
+              ) : rows.map((row) => (
+                <tr key={row.id} className="border-t" style={{ borderColor: t.border }}>
+                  <td className="px-3 py-2" style={{ color: t.textMuted }}>{row.imported_at ? new Date(row.imported_at).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-2" style={{ color: t.text }}>{row.admin || '—'}</td>
+                  <td className="px-3 py-2 truncate max-w-[160px]" style={{ color: t.textMuted }} title={row.file_name}>{row.file_name}</td>
+                  <td className="px-3 py-2" style={{ color: row.status === 'failed' ? BRAND.danger : row.status === 'completed_with_errors' || row.status === 'processing' || row.status === 'queued' ? BRAND.amber : BRAND.ok }}>{row.status}</td>
+                  <td className="px-3 py-2 text-xs" style={{ color: t.textMuted }}>
+                    {row.total_rows} rows · {row.created} imported · {row.updated} updated · {row.skipped} skipped · {row.errors} failed
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      icon={Trash2}
+                      disabled={!!deletingId}
+                      onClick={() => setConfirmRow(row)}
+                      style={{ color: BRAND.danger, borderColor: t.border }}
+                    >
+                      Delete
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <Pagination
+            t={t}
+            page={meta.current_page || page}
+            totalPages={meta.last_page || 1}
+            onPage={setPage}
+            total={meta.total || 0}
+            pageSize={meta.per_page || pageSize}
+          />
+        </div>
+      </Modal>
+      <CategoryImportHistoryDeleteConfirm
         t={t}
         open={!!confirmRow}
         fileName={confirmRow?.file_name}
@@ -612,7 +621,7 @@ export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose })
   );
 }
 
-function HistoryDeleteConfirm({ t, open, fileName, loading, onCancel, onConfirm }) {
+function CategoryImportHistoryDeleteConfirm({ t, open, fileName, loading, onCancel, onConfirm }) {
   const [hoverCancel, setHoverCancel] = useState(false);
   const [hoverConfirm, setHoverConfirm] = useState(false);
 
@@ -654,7 +663,7 @@ function HistoryDeleteConfirm({ t, open, fileName, loading, onCancel, onConfirm 
         </div>
         <p className="text-sm leading-relaxed mb-7 max-w-[340px] mx-auto" style={{ color: t.textMuted }}>
           {fileName ? `"${fileName}" will be removed from the import log.` : 'This history row will be removed.'}
-          {' '}Imported countries, states, and districts will not be deleted.
+          {' '}Imported WhatsApp groups will not be deleted.
         </p>
         <div className="flex items-center justify-center gap-3">
           <button
@@ -689,42 +698,5 @@ function HistoryDeleteConfirm({ t, open, fileName, loading, onCancel, onConfirm 
         </div>
       </div>
     </div>
-  );
-}
-
-export function WhatsAppCommunityImportButton({ t, toast, onImported }) {
-  const { canAll } = usePermissions();
-  const [open, setOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const allowed = useMemo(() => canAll(WHATSAPP_IMPORT_PERMISSIONS), [canAll]);
-
-  if (!allowed) return null;
-
-  return (
-    <>
-      <Button variant="outline" size="sm" icon={Upload} onClick={() => setOpen(true)} style={{ color: t.text, borderColor: t.border }}>
-        Import Excel
-      </Button>
-      <Button variant="outline" size="sm" icon={History} onClick={() => setHistoryOpen(true)} style={{ color: t.text, borderColor: t.border }}>
-        Import History
-      </Button>
-      <WhatsAppCommunityImportModal
-        t={t}
-        toast={toast}
-        open={open}
-        onClose={() => setOpen(false)}
-        onImported={onImported}
-        onViewHistory={() => {
-          setOpen(false);
-          setHistoryOpen(true);
-        }}
-      />
-      <WhatsAppCommunityImportHistoryModal
-        t={t}
-        toast={toast}
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
-      />
-    </>
   );
 }

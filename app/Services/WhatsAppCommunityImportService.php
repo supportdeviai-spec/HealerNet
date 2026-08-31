@@ -6,11 +6,9 @@ use App\Enums\Status;
 use App\Jobs\PreviewWhatsAppCommunityImport;
 use App\Jobs\ProcessWhatsAppCommunityImport;
 use App\Models\City;
-use App\Models\CityWhatsAppGroup;
 use App\Models\Country;
 use App\Models\Region;
 use App\Models\WhatsAppCommunityImport;
-use App\Models\WhatsAppGroup;
 use App\Support\LocationNameNormalizer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
@@ -56,7 +54,7 @@ class WhatsAppCommunityImportService
     /**
      * @var list<string>
      */
-    private const REQUIRED_HEADERS = ['country', 'state', 'district', 'group_name', 'group_link'];
+    private const REQUIRED_HEADERS = ['country', 'state', 'district'];
 
     public function __construct(private readonly SpreadsheetRowReader $reader) {}
 
@@ -192,7 +190,9 @@ class WhatsAppCommunityImportService
 
     public function runImport(int $importId): void
     {
-        $import = WhatsAppCommunityImport::query()->find($importId);
+        $import = WhatsAppCommunityImport::query()
+            ->where('import_type', WhatsAppCommunityImport::TYPE_LOCATION)
+            ->find($importId);
         if (! $import) {
             return;
         }
@@ -278,7 +278,9 @@ class WhatsAppCommunityImportService
             ? $e->getMessage()
             : 'Import failed. Some rows from earlier chunks may already have been saved. Check Import History and try a corrected file.';
 
-        $import = WhatsAppCommunityImport::query()->find($importId);
+        $import = WhatsAppCommunityImport::query()
+            ->where('import_type', WhatsAppCommunityImport::TYPE_LOCATION)
+            ->find($importId);
         if (! $import) {
             return;
         }
@@ -297,6 +299,7 @@ class WhatsAppCommunityImportService
     public function history(int $limit = 5): Collection
     {
         return WhatsAppCommunityImport::query()
+            ->where('import_type', WhatsAppCommunityImport::TYPE_LOCATION)
             ->with('user:id,name,email')
             ->orderByDesc('imported_at')
             ->orderByDesc('id')
@@ -307,6 +310,7 @@ class WhatsAppCommunityImportService
     public function paginateHistory(int $perPage = 15): LengthAwarePaginator
     {
         return WhatsAppCommunityImport::query()
+            ->where('import_type', WhatsAppCommunityImport::TYPE_LOCATION)
             ->with('user:id,name,email')
             ->orderByDesc('imported_at')
             ->orderByDesc('id')
@@ -350,17 +354,17 @@ class WhatsAppCommunityImportService
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray([
-            ['Country', 'State', 'District', 'WhatsApp Group Name', 'WhatsApp Group Link', 'Status', 'Description'],
-            ['India', 'Punjab', 'Mohali', 'Mohali Community', 'https://chat.whatsapp.com/ABC123', 'Active', 'Mohali district community'],
-            ['India', 'Punjab', 'Patiala', 'Patiala Community', 'https://chat.whatsapp.com/DEF456', 'Active', 'Patiala district community'],
+            ['Country', 'State', 'District', 'Status'],
+            ['India', 'Punjab', 'Mohali', 'Active'],
+            ['India', 'Punjab', 'Patiala', 'Active'],
         ], null, 'A1');
-        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:D1')->getFont()->setBold(true);
 
         $writer = new Xlsx($spreadsheet);
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
-        }, 'HealerNet_WhatsApp_Community_Import_Template.xlsx', [
+        }, 'HealerNet_Location_Import_Template.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
@@ -393,6 +397,7 @@ class WhatsAppCommunityImportService
         return WhatsAppCommunityImport::create([
             'user_id' => $userId,
             'file_name' => $fileName,
+            'import_type' => WhatsAppCommunityImport::TYPE_LOCATION,
             'file_path' => $filePath,
             'status' => $status,
             'total_rows' => $processed,
@@ -687,7 +692,7 @@ class WhatsAppCommunityImportService
                         fn (string $key) => ! array_key_exists($key, $map)
                     ));
                     if ($missing !== []) {
-                        throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+                        throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District.');
                     }
                 }
 
@@ -720,7 +725,7 @@ class WhatsAppCommunityImportService
             throw new InvalidArgumentException('The spreadsheet is empty.');
         }
         if ($map === null) {
-            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District.');
         }
         if ($buffer !== []) {
             yield $buffer;
@@ -770,7 +775,7 @@ class WhatsAppCommunityImportService
 
         $headerIndex = $this->findHeaderRow($rawRows);
         if ($headerIndex === null) {
-            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District.');
         }
 
         $map = $this->mapHeaders($rawRows[$headerIndex]);
@@ -779,7 +784,7 @@ class WhatsAppCommunityImportService
             fn (string $key) => ! array_key_exists($key, $map)
         ));
         if ($missing !== []) {
-            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District, WhatsApp Group Name, WhatsApp Group Link.');
+            throw new InvalidArgumentException('Required headers were not found. Expected: Country, State, District.');
         }
 
         $rows = [];
@@ -827,14 +832,11 @@ class WhatsAppCommunityImportService
             'countries' => $countries,
             'regions' => $this->loadRegions(),
             'cities' => $this->loadCities(),
-            'groups' => $this->loadGroups(),
             'usedCountryCodes' => $this->usedCountryCodes($countries),
             'seenExact' => [],
-            'districtLink' => [],
             'countryCounted' => [],
             'stateCounted' => [],
             'districtCounted' => [],
-            'groupCounted' => [],
             'summary' => $this->emptySummary(),
             'issues' => [],
         ];
@@ -849,16 +851,13 @@ class WhatsAppCommunityImportService
         $countries = &$state['countries'];
         $regions = &$state['regions'];
         $cities = &$state['cities'];
-        $groups = &$state['groups'];
         $usedCountryCodes = &$state['usedCountryCodes'];
         $seenExact = &$state['seenExact'];
-        $districtLink = &$state['districtLink'];
         $summary = &$state['summary'];
         $issues = &$state['issues'];
         $countryCounted = &$state['countryCounted'];
         $stateCounted = &$state['stateCounted'];
         $districtCounted = &$state['districtCounted'];
-        $groupCounted = &$state['groupCounted'];
 
         $summary['total_rows'] += count($rows);
 
@@ -867,9 +866,6 @@ class WhatsAppCommunityImportService
             $countryDisplay = LocationNameNormalizer::display($row['country'] ?? '');
             $stateDisplay = LocationNameNormalizer::display($row['state'] ?? '');
             $districtDisplay = LocationNameNormalizer::display($row['district'] ?? '');
-            $groupName = LocationNameNormalizer::display($row['group_name'] ?? '');
-            $groupLink = trim((string) ($row['group_link'] ?? ''));
-            $description = trim((string) ($row['description'] ?? ''));
             $statusInput = trim((string) ($row['status'] ?? ''));
 
             $issueBase = [
@@ -877,10 +873,10 @@ class WhatsAppCommunityImportService
                 'country' => $countryDisplay,
                 'state' => $stateDisplay,
                 'district' => $districtDisplay,
-                'group_name' => $groupName,
+                'group_name' => null,
             ];
 
-            $error = $this->validateRow($countryDisplay, $stateDisplay, $districtDisplay, $groupName, $groupLink, $statusInput);
+            $error = $this->validateRow($countryDisplay, $stateDisplay, $districtDisplay, $statusInput);
             if ($error !== null) {
                 $summary['errors']++;
                 $issues[] = [...$issueBase, 'type' => 'error', 'reason' => $error];
@@ -888,31 +884,20 @@ class WhatsAppCommunityImportService
                 continue;
             }
 
-            $groupStatus = $this->parseGroupStatus($statusInput);
+            $locationStatus = $this->parseLocationStatus($statusInput) ?? Status::ACTIVE;
             $countryKey = LocationNameNormalizer::name($countryDisplay);
             $stateKey = LocationNameNormalizer::name($stateDisplay);
             $districtKey = LocationNameNormalizer::name($districtDisplay);
-            $linkKey = LocationNameNormalizer::whatsappUrl($groupLink);
             $locationKey = $countryKey.'|'.$stateKey.'|'.$districtKey;
-            $exactKey = $locationKey.'|'.$linkKey;
 
-            if (isset($seenExact[$exactKey])) {
+            if (isset($seenExact[$locationKey])) {
                 $summary['skipped_duplicates']++;
                 $issues[] = [...$issueBase, 'type' => 'duplicate', 'reason' => 'Duplicate row skipped.'];
 
                 continue;
             }
 
-            if (isset($districtLink[$locationKey]) && $districtLink[$locationKey] !== $linkKey) {
-                $summary['conflicts']++;
-                $issues[] = [
-                    ...$issueBase,
-                    'type' => 'conflict',
-                    'reason' => 'Multiple WhatsApp Groups found for the same District.',
-                ];
-
-                continue;
-            }
+            $seenExact[$locationKey] = true;
 
             $countryRecord = $countries[$countryKey] ?? null;
             $regionRecord = $countryRecord
@@ -922,30 +907,16 @@ class WhatsAppCommunityImportService
                 ? ($cities[$regionRecord['id'].'|'.$districtKey] ?? null)
                 : null;
 
-            if ($cityRecord && $this->cityHasConflictingMappings($cityRecord, $linkKey, $groups)) {
-                $summary['conflicts']++;
-                $issues[] = [
-                    ...$issueBase,
-                    'type' => 'conflict',
-                    'reason' => 'Multiple WhatsApp Groups found for the same District.',
-                ];
-
-                continue;
-            }
-
-            $seenExact[$exactKey] = true;
-            $districtLink[$locationKey] = $linkKey;
-
             $countryIsNew = $countryRecord === null;
             if ($countryIsNew) {
-                $countryRecord = $this->makeCountry($countryDisplay, $usedCountryCodes, $commit);
+                $countryRecord = $this->makeCountry($countryDisplay, $usedCountryCodes, Status::ACTIVE, $commit);
                 $countries[$countryKey] = $countryRecord;
             }
 
             $stateMapKey = $countryRecord['id'].'|'.$stateKey;
             $stateIsNew = ! isset($regions[$stateMapKey]);
             if ($stateIsNew) {
-                $regionRecord = $this->makeRegion($countryRecord['id'], $stateDisplay, $commit);
+                $regionRecord = $this->makeRegion($countryRecord['id'], $stateDisplay, Status::ACTIVE, $commit);
                 $regions[$stateMapKey] = $regionRecord;
             } else {
                 $regionRecord = $regions[$stateMapKey];
@@ -953,26 +924,15 @@ class WhatsAppCommunityImportService
 
             $districtMapKey = $regionRecord['id'].'|'.$districtKey;
             $districtIsNew = ! isset($cities[$districtMapKey]);
+            $districtUpdated = false;
             if ($districtIsNew) {
-                $cityRecord = $this->makeCity($regionRecord['id'], $districtDisplay, $commit);
+                $cityRecord = $this->makeCity($regionRecord['id'], $districtDisplay, $locationStatus, $commit);
                 $cities[$districtMapKey] = $cityRecord;
             } else {
                 $cityRecord = $cities[$districtMapKey];
+                $districtUpdated = $this->updateCityStatusIfNeeded($cityRecord, $locationStatus, $commit);
+                $cities[$districtMapKey] = $cityRecord;
             }
-
-            $groupIsNew = ! isset($groups[$linkKey]);
-            $groupUpdated = false;
-            if ($groupIsNew) {
-                $groupRecord = $this->makeGroup($groupName, $groupLink, $description, $groupStatus, $commit);
-                $groups[$linkKey] = $groupRecord;
-            } else {
-                $groupRecord = $groups[$linkKey];
-                $groupUpdated = $this->updateGroupIfNeeded($groupRecord, $groupName, $description, $groupStatus, $commit);
-                $groups[$linkKey] = $groupRecord;
-            }
-
-            $mappingResult = $this->syncMapping($cityRecord, $groupRecord, $commit);
-            $cities[$districtMapKey] = $cityRecord;
 
             if (! isset($countryCounted[$countryKey])) {
                 $countryCounted[$countryKey] = true;
@@ -986,17 +946,8 @@ class WhatsAppCommunityImportService
                 $districtCounted[$districtMapKey] = true;
                 $summary['districts'][$districtIsNew ? 'new' : 'existing']++;
             }
-            if (! isset($groupCounted[$linkKey])) {
-                $groupCounted[$linkKey] = true;
-                $summary['whatsapp_groups'][$groupIsNew ? 'new' : 'existing']++;
-            }
 
-            if ($groupUpdated) {
-                $summary['updated']['whatsapp_groups']++;
-            }
-            if ($mappingResult === 'created' && ! $districtIsNew) {
-                $summary['updated']['districts']++;
-            } elseif ($mappingResult === 'replaced') {
+            if ($districtUpdated && ! $districtIsNew) {
                 $summary['updated']['districts']++;
             }
         }
@@ -1006,8 +957,6 @@ class WhatsAppCommunityImportService
         string $country,
         string $state,
         string $district,
-        string $groupName,
-        string $groupLink,
         string $statusInput
     ): ?string {
         if ($country === '') {
@@ -1019,23 +968,14 @@ class WhatsAppCommunityImportService
         if ($district === '') {
             return 'Missing District.';
         }
-        if ($groupName === '') {
-            return 'Missing Group Name.';
-        }
-        if ($groupLink === '') {
-            return 'Missing Group Link.';
-        }
-        if (! preg_match(self::WHATSAPP_LINK_PATTERN, $groupLink)) {
-            return 'Invalid WhatsApp Group URL.';
-        }
-        if ($statusInput !== '' && $this->parseGroupStatus($statusInput) === null) {
-            return 'Invalid Status. Use Active, Inactive, or Full.';
+        if ($statusInput !== '' && $this->parseLocationStatus($statusInput) === null) {
+            return 'Invalid Status. Use Active or Inactive.';
         }
 
         return null;
     }
 
-    private function parseGroupStatus(string $statusInput): ?string
+    private function parseLocationStatus(string $statusInput): ?Status
     {
         if ($statusInput === '') {
             return null;
@@ -1044,81 +984,30 @@ class WhatsAppCommunityImportService
         $normalized = mb_strtolower(trim($statusInput), 'UTF-8');
 
         return match ($normalized) {
-            'active' => 'active',
-            'inactive' => 'inactive',
-            'full' => 'full',
+            'active' => Status::ACTIVE,
+            'inactive' => Status::INACTIVE,
             default => null,
         };
     }
 
-    /**
-     * @param  array<string, mixed>  $cityRecord
-     * @param  array<string, array<string, mixed>>  $groups
-     */
-    private function cityHasConflictingMappings(array $cityRecord, string $incomingLinkKey, array $groups): bool
+    private function updateCityStatusIfNeeded(array &$cityRecord, Status $status, bool $commit): bool
     {
-        $mappings = $cityRecord['mappings'] ?? [];
-        if (count($mappings) <= 1) {
+        if (($cityRecord['status'] ?? Status::ACTIVE) === $status) {
             return false;
         }
 
-        foreach ($mappings as $mapping) {
-            $group = $groups[$mapping['link_key'] ?? ''] ?? null;
-            if ($group && ($group['link_key'] ?? '') === $incomingLinkKey) {
-                return false;
-            }
+        $cityRecord['status'] = $status;
+        if ($commit && isset($cityRecord['id']) && ! str_starts_with((string) $cityRecord['id'], 'new:')) {
+            City::query()->whereKey($cityRecord['id'])->update(['status' => $status]);
         }
 
         return true;
     }
 
     /**
-     * @param  array<string, mixed>  $cityRecord
-     * @param  array<string, mixed>  $groupRecord
-     */
-    private function syncMapping(array &$cityRecord, array $groupRecord, bool $commit): string
-    {
-        $mappings = $cityRecord['mappings'] ?? [];
-        foreach ($mappings as $mapping) {
-            if (($mapping['whatsapp_group_id'] ?? null) === $groupRecord['id']) {
-                return 'existing';
-            }
-        }
-
-        if ($mappings === []) {
-            $mapping = $this->makeMapping($cityRecord['id'], $groupRecord['id'], $groupRecord['link_key'], $commit);
-            $cityRecord['mappings'][] = $mapping;
-
-            return 'created';
-        }
-
-        if (count($mappings) === 1) {
-            $existing = $mappings[0];
-            if ($commit && isset($existing['id']) && is_int($existing['id'])) {
-                CityWhatsAppGroup::query()->whereKey($existing['id'])->update([
-                    'whatsapp_group_id' => $groupRecord['id'],
-                    'status' => 'active',
-                ]);
-            }
-            $cityRecord['mappings'][0] = [
-                'id' => $existing['id'] ?? null,
-                'whatsapp_group_id' => $groupRecord['id'],
-                'link_key' => $groupRecord['link_key'],
-            ];
-
-            return 'replaced';
-        }
-
-        $mapping = $this->makeMapping($cityRecord['id'], $groupRecord['id'], $groupRecord['link_key'], $commit);
-        $cityRecord['mappings'][] = $mapping;
-
-        return 'created';
-    }
-
-    /**
      * @return array<string, mixed>
      */
-    private function makeCountry(string $display, array &$usedCountryCodes, bool $commit): array
+    private function makeCountry(string $display, array &$usedCountryCodes, Status $status, bool $commit): array
     {
         $code = $this->generateCountryCode($display, $usedCountryCodes);
         $usedCountryCodes[strtoupper($code)] = true;
@@ -1128,7 +1017,7 @@ class WhatsAppCommunityImportService
                 'name' => $display,
                 'code' => $code,
                 'phone_code' => null,
-                'status' => Status::ACTIVE,
+                'status' => $status,
             ])->id
             : 'new:country:'.$display;
 
@@ -1136,13 +1025,14 @@ class WhatsAppCommunityImportService
             'id' => $id,
             'name' => $display,
             'code' => $code,
+            'status' => $status,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function makeRegion(int|string $countryId, string $display, bool $commit): array
+    private function makeRegion(int|string $countryId, string $display, Status $status, bool $commit): array
     {
         $id = $commit
             ? Region::create([
@@ -1150,7 +1040,7 @@ class WhatsAppCommunityImportService
                 'name' => $display,
                 'code' => null,
                 'type' => 'state',
-                'status' => Status::ACTIVE,
+                'status' => $status,
             ])->id
             : 'new:region:'.$countryId.':'.$display;
 
@@ -1158,19 +1048,20 @@ class WhatsAppCommunityImportService
             'id' => $id,
             'country_id' => $countryId,
             'name' => $display,
+            'status' => $status,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function makeCity(int|string $regionId, string $display, bool $commit): array
+    private function makeCity(int|string $regionId, string $display, Status $status, bool $commit): array
     {
         $id = $commit
             ? City::create([
                 'region_id' => $regionId,
                 'name' => $display,
-                'status' => Status::ACTIVE,
+                'status' => $status,
             ])->id
             : 'new:city:'.$regionId.':'.$display;
 
@@ -1178,89 +1069,7 @@ class WhatsAppCommunityImportService
             'id' => $id,
             'region_id' => $regionId,
             'name' => $display,
-            'mappings' => [],
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function makeGroup(string $name, string $link, string $description, ?string $status, bool $commit): array
-    {
-        $id = $commit
-            ? WhatsAppGroup::create([
-                'category_id' => null,
-                'name' => $name,
-                'description' => $description !== '' ? $description : null,
-                'whatsapp_url' => $link,
-                'max_members' => 250,
-                'current_members' => 0,
-                'status' => $status ?? 'active',
-            ])->id
-            : 'new:group:'.LocationNameNormalizer::whatsappUrl($link);
-
-        return [
-            'id' => $id,
-            'name' => $name,
-            'description' => $description !== '' ? $description : null,
-            'whatsapp_url' => $link,
-            'status' => $status ?? 'active',
-            'link_key' => LocationNameNormalizer::whatsappUrl($link),
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $groupRecord
-     */
-    private function updateGroupIfNeeded(array &$groupRecord, string $name, string $description, ?string $status, bool $commit): bool
-    {
-        $changes = [];
-
-        if ($name !== '' && $name !== ($groupRecord['name'] ?? null)) {
-            $changes['name'] = $name;
-            $groupRecord['name'] = $name;
-        }
-
-        if ($description !== '' && $description !== (string) ($groupRecord['description'] ?? '')) {
-            $changes['description'] = $description;
-            $groupRecord['description'] = $description;
-        }
-
-        if ($status !== null && $status !== ($groupRecord['status'] ?? null)) {
-            $changes['status'] = $status;
-            $groupRecord['status'] = $status;
-        }
-
-        if ($changes === []) {
-            return false;
-        }
-
-        if ($commit && isset($groupRecord['id']) && ! str_starts_with((string) $groupRecord['id'], 'new:')) {
-            WhatsAppGroup::query()->whereKey($groupRecord['id'])->update($changes);
-        }
-
-        return true;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function makeMapping(int|string $cityId, int|string $groupId, string $linkKey, bool $commit): array
-    {
-        $id = null;
-        if ($commit) {
-            $id = CityWhatsAppGroup::create([
-                'city_id' => $cityId,
-                'whatsapp_group_id' => $groupId,
-                'display_order' => 0,
-                'status' => 'active',
-            ])->id;
-        }
-
-        return [
-            'id' => $id,
-            'whatsapp_group_id' => $groupId,
-            'link_key' => $linkKey,
+            'status' => $status,
         ];
     }
 
@@ -1270,11 +1079,12 @@ class WhatsAppCommunityImportService
     private function loadCountries(): array
     {
         $map = [];
-        foreach (Country::query()->get(['id', 'name', 'code']) as $country) {
+        foreach (Country::query()->get(['id', 'name', 'code', 'status']) as $country) {
             $map[LocationNameNormalizer::name($country->name)] = [
                 'id' => $country->id,
                 'name' => $country->name,
                 'code' => $country->code,
+                'status' => $country->status,
             ];
         }
 
@@ -1287,11 +1097,12 @@ class WhatsAppCommunityImportService
     private function loadRegions(): array
     {
         $map = [];
-        foreach (Region::query()->get(['id', 'country_id', 'name']) as $region) {
+        foreach (Region::query()->get(['id', 'country_id', 'name', 'status']) as $region) {
             $map[$region->country_id.'|'.LocationNameNormalizer::name($region->name)] = [
                 'id' => $region->id,
                 'country_id' => $region->country_id,
                 'name' => $region->name,
+                'status' => $region->status,
             ];
         }
 
@@ -1303,62 +1114,13 @@ class WhatsAppCommunityImportService
      */
     private function loadCities(): array
     {
-        $groupsById = WhatsAppGroup::query()
-            ->get(['id', 'whatsapp_url'])
-            ->keyBy('id');
-
-        $mappingsByCity = CityWhatsAppGroup::query()
-            ->orderBy('display_order')
-            ->orderBy('id')
-            ->get(['id', 'city_id', 'whatsapp_group_id'])
-            ->groupBy('city_id');
-
         $map = [];
-        foreach (City::query()->get(['id', 'region_id', 'name', 'latitude', 'longitude', 'status']) as $city) {
-            $mappings = [];
-            foreach ($mappingsByCity->get($city->id, collect()) as $mapping) {
-                $group = $groupsById->get($mapping->whatsapp_group_id);
-                $mappings[] = [
-                    'id' => $mapping->id,
-                    'whatsapp_group_id' => $mapping->whatsapp_group_id,
-                    'link_key' => $group ? LocationNameNormalizer::whatsappUrl($group->whatsapp_url) : '',
-                ];
-            }
-
+        foreach (City::query()->get(['id', 'region_id', 'name', 'status']) as $city) {
             $map[$city->region_id.'|'.LocationNameNormalizer::name($city->name)] = [
                 'id' => $city->id,
                 'region_id' => $city->region_id,
                 'name' => $city->name,
-                'mappings' => $mappings,
-            ];
-        }
-
-        return $map;
-    }
-
-    /**
-     * @return array<string, array<string, mixed>>
-     */
-    private function loadGroups(): array
-    {
-        $map = [];
-        $groups = WhatsAppGroup::query()
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get(['id', 'name', 'description', 'whatsapp_url', 'status']);
-
-        foreach ($groups as $group) {
-            $key = LocationNameNormalizer::whatsappUrl($group->whatsapp_url);
-            if ($key === '' || isset($map[$key])) {
-                continue;
-            }
-            $map[$key] = [
-                'id' => $group->id,
-                'name' => $group->name,
-                'description' => $group->description,
-                'whatsapp_url' => $group->whatsapp_url,
-                'status' => $group->status,
-                'link_key' => $key,
+                'status' => $city->status,
             ];
         }
 

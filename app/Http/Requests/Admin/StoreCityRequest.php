@@ -26,7 +26,6 @@ class StoreCityRequest extends FormRequest
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['required', Rule::enum(Status::class)],
-            'whatsapp_group_id' => ['nullable', 'uuid', 'exists:whatsapp_groups,id'],
         ];
     }
 }

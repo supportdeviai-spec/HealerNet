@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\PractitionerController;
 use App\Http\Controllers\User\DashboardController;
 use App\Http\Controllers\User\ProfileController;
+use App\Http\Controllers\User\UserCommunityController;
 use App\Http\Controllers\Admin\AdminCategoryController;
 use App\Http\Controllers\Admin\AdminCommunityController;
 use App\Http\Controllers\Admin\AdminPageController;
@@ -23,11 +24,11 @@ use App\Http\Controllers\LocationController;
 use App\Http\Controllers\BannerController;
 use App\Http\Controllers\Admin\AdminBannerController;
 use App\Http\Controllers\Admin\AdminCityController;
-use App\Http\Controllers\Admin\AdminCommunityGroupController;
-use App\Http\Controllers\Admin\AdminWhatsAppCommunityImportController;
-use App\Http\Controllers\Admin\AdminWhatsAppGroupController;
 use App\Http\Controllers\Admin\AdminCountryController;
 use App\Http\Controllers\Admin\AdminRegionController;
+use App\Http\Controllers\Admin\AdminWhatsAppCommunityImportController;
+use App\Http\Controllers\Admin\AdminCategoryWhatsAppGroupImportController;
+use App\Http\Controllers\Admin\AdminWhatsAppGroupController;
 use App\Http\Controllers\Admin\AdminRoleController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\PublicCategoryController;
@@ -80,6 +81,10 @@ Route::get('/countries', [PublicLocationController::class, 'countries']);
 Route::get('/countries/{country}/regions', [PublicLocationController::class, 'regions']);
 Route::get('/regions/{region}/cities', [PublicLocationController::class, 'cities']);
 Route::get('/cities/{city}/community-groups', [PublicLocationController::class, 'communityGroups']);
+
+Route::middleware('auth:sanctum')->prefix('user')->group(function () {
+    Route::get('/category-community-groups', [UserCommunityController::class, 'categoryGroups']);
+});
 
 // Legacy Location Routes (/api/locations/*)
 Route::prefix('locations')->group(function () {
@@ -151,13 +156,21 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::delete('/communities/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'destroy'])->middleware('permission:whatsapp-groups.delete');
     Route::delete('/whatsapp-groups/{whatsappGroup}', [AdminWhatsAppGroupController::class, 'destroy'])->middleware('permission:whatsapp-groups.delete');
 
-    Route::get('/whatsapp-community-imports/template', [AdminWhatsAppCommunityImportController::class, 'template']);
-    Route::get('/whatsapp-community-imports/preview/{token}', [AdminWhatsAppCommunityImportController::class, 'previewStatus']);
-    Route::get('/whatsapp-community-imports/{whatsappCommunityImport}/status', [AdminWhatsAppCommunityImportController::class, 'status']);
-    Route::get('/whatsapp-community-imports', [AdminWhatsAppCommunityImportController::class, 'history']);
-    Route::post('/whatsapp-community-imports/preview', [AdminWhatsAppCommunityImportController::class, 'preview']);
-    Route::post('/whatsapp-community-imports/confirm', [AdminWhatsAppCommunityImportController::class, 'confirm']);
-    Route::delete('/whatsapp-community-imports/{whatsappCommunityImport}', [AdminWhatsAppCommunityImportController::class, 'destroy']);
+    Route::get('/whatsapp-community-imports/template', [AdminWhatsAppCommunityImportController::class, 'template'])->middleware('permission:countries.create');
+    Route::get('/whatsapp-community-imports/preview/{token}', [AdminWhatsAppCommunityImportController::class, 'previewStatus'])->middleware('permission:countries.create');
+    Route::get('/whatsapp-community-imports/{whatsappCommunityImport}/status', [AdminWhatsAppCommunityImportController::class, 'status'])->middleware('permission:countries.create');
+    Route::get('/whatsapp-community-imports', [AdminWhatsAppCommunityImportController::class, 'history'])->middleware('permission:countries.create');
+    Route::post('/whatsapp-community-imports/preview', [AdminWhatsAppCommunityImportController::class, 'preview'])->middleware('permission:countries.create');
+    Route::post('/whatsapp-community-imports/confirm', [AdminWhatsAppCommunityImportController::class, 'confirm'])->middleware('permission:countries.create');
+    Route::delete('/whatsapp-community-imports/{whatsappCommunityImport}', [AdminWhatsAppCommunityImportController::class, 'destroy'])->middleware('permission:countries.create');
+
+    Route::get('/category-whatsapp-group-imports/template', [AdminCategoryWhatsAppGroupImportController::class, 'template'])->middleware('permission:whatsapp-groups.create');
+    Route::get('/category-whatsapp-group-imports/preview/{token}', [AdminCategoryWhatsAppGroupImportController::class, 'previewStatus'])->middleware('permission:whatsapp-groups.create');
+    Route::get('/category-whatsapp-group-imports/{categoryWhatsappGroupImport}/status', [AdminCategoryWhatsAppGroupImportController::class, 'status'])->middleware('permission:whatsapp-groups.create');
+    Route::get('/category-whatsapp-group-imports', [AdminCategoryWhatsAppGroupImportController::class, 'history'])->middleware('permission:whatsapp-groups.create');
+    Route::post('/category-whatsapp-group-imports/preview', [AdminCategoryWhatsAppGroupImportController::class, 'preview'])->middleware('permission:whatsapp-groups.create');
+    Route::post('/category-whatsapp-group-imports/confirm', [AdminCategoryWhatsAppGroupImportController::class, 'confirm'])->middleware('permission:whatsapp-groups.create');
+    Route::delete('/category-whatsapp-group-imports/{categoryWhatsappGroupImport}', [AdminCategoryWhatsAppGroupImportController::class, 'destroy'])->middleware('permission:whatsapp-groups.create');
 
     Route::middleware('permission:cms.view')->get('/pages', [AdminPageController::class, 'index']);
     Route::middleware('permission:cms.view')->get('/pages/{page}', [AdminPageController::class, 'show']);
@@ -201,16 +214,6 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'admin'])->group(function ()
     Route::put('/cities/{city}', [AdminCityController::class, 'update'])->middleware('permission:cities.edit');
     Route::patch('/cities/{city}/status', [AdminCityController::class, 'updateStatus'])->middleware('permission:cities.edit');
     Route::delete('/cities/{city}', [AdminCityController::class, 'destroy'])->middleware('permission:cities.delete');
-
-    Route::middleware('permission:community-groups.view')->group(function () {
-        Route::get('/community-groups', [AdminCommunityGroupController::class, 'index']);
-        Route::get('/community-groups/{communityGroup}', [AdminCommunityGroupController::class, 'show']);
-        Route::get('/cities/{city}/available-whatsapp-groups', [AdminCommunityGroupController::class, 'availableForCity']);
-    });
-    Route::post('/community-groups', [AdminCommunityGroupController::class, 'store'])->middleware('permission:community-groups.edit');
-    Route::put('/community-groups/{communityGroup}', [AdminCommunityGroupController::class, 'update'])->middleware('permission:community-groups.edit');
-    Route::patch('/community-groups/{communityGroup}/status', [AdminCommunityGroupController::class, 'updateStatus'])->middleware('permission:community-groups.edit');
-    Route::delete('/community-groups/{communityGroup}', [AdminCommunityGroupController::class, 'destroy'])->middleware('permission:community-groups.delete');
 
     Route::get('/permissions', [AdminRoleController::class, 'permissions'])->middleware('permission:permissions.view');
     Route::get('/roles', [AdminRoleController::class, 'index'])->middleware('permission:roles.view');

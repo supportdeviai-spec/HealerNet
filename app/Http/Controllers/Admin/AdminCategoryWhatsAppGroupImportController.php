@@ -4,17 +4,17 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Concerns\RespondsWithJson;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Admin\ConfirmWhatsAppCommunityImportRequest;
-use App\Http\Requests\Admin\PreviewWhatsAppCommunityImportRequest;
+use App\Http\Requests\Admin\ConfirmCategoryWhatsAppGroupImportRequest;
+use App\Http\Requests\Admin\PreviewCategoryWhatsAppGroupImportRequest;
 use App\Models\User;
 use App\Models\WhatsAppCommunityImport;
-use App\Services\WhatsAppCommunityImportService;
+use App\Services\CategoryWhatsAppGroupImportService;
 use App\Support\PermissionCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 
-class AdminWhatsAppCommunityImportController extends Controller
+class AdminCategoryWhatsAppGroupImportController extends Controller
 {
     use RespondsWithJson;
 
@@ -22,14 +22,12 @@ class AdminWhatsAppCommunityImportController extends Controller
      * @var list<string>
      */
     public const REQUIRED_PERMISSIONS = [
-        'countries.create',
-        'states.create',
-        'cities.create',
+        'whatsapp-groups.create',
     ];
 
-    public function __construct(private readonly WhatsAppCommunityImportService $imports) {}
+    public function __construct(private readonly CategoryWhatsAppGroupImportService $imports) {}
 
-    public function preview(PreviewWhatsAppCommunityImportRequest $request): JsonResponse
+    public function preview(PreviewCategoryWhatsAppGroupImportRequest $request): JsonResponse
     {
         $forbidden = $this->denyUnlessCanImport($request->user());
         if ($forbidden) {
@@ -43,13 +41,13 @@ class AdminWhatsAppCommunityImportController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Unable to read the uploaded file. Upload a valid Excel or CSV file.', null, 422);
+            return $this->errorResponse('Unable to read the uploaded file. Upload a valid Excel file.', null, 422);
         }
 
         return $this->successResponse('Import preview generated.', $data);
     }
 
-    public function confirm(ConfirmWhatsAppCommunityImportRequest $request): JsonResponse
+    public function confirm(ConfirmCategoryWhatsAppGroupImportRequest $request): JsonResponse
     {
         $forbidden = $this->denyUnlessCanImport($request->user());
         if ($forbidden) {
@@ -66,13 +64,19 @@ class AdminWhatsAppCommunityImportController extends Controller
         } catch (\Throwable $e) {
             report($e);
 
-            return $this->errorResponse('Import failed. Existing data was not changed.', null, 500);
+            $message = $e->getMessage() ?: 'Import failed. Existing data was not changed.';
+
+            return $this->errorResponse($message, null, 500);
         }
 
         $status = $data['status'] ?? 'queued';
-        $message = in_array($status, ['completed', 'completed_with_errors'], true)
-            ? 'Import completed successfully.'
-            : 'Import queued successfully.';
+        $message = match ($status) {
+            'completed', 'completed_with_errors' => $status === 'completed_with_errors'
+                ? 'Import completed with errors.'
+                : 'WhatsApp groups imported successfully.',
+            'failed' => $data['error_message'] ?? 'Import failed.',
+            default => 'Import queued successfully.',
+        };
 
         return $this->successResponse($message, $data);
     }
@@ -93,16 +97,20 @@ class AdminWhatsAppCommunityImportController extends Controller
         return $this->successResponse('Import preview status fetched successfully.', $data);
     }
 
-    public function status(Request $request, WhatsAppCommunityImport $whatsappCommunityImport): JsonResponse
+    public function status(Request $request, WhatsAppCommunityImport $categoryWhatsappGroupImport): JsonResponse
     {
         $forbidden = $this->denyUnlessCanImport($request->user());
         if ($forbidden) {
             return $forbidden;
         }
 
+        if ($categoryWhatsappGroupImport->import_type !== WhatsAppCommunityImport::TYPE_CATEGORY_GROUPS) {
+            return $this->errorResponse('Import record not found.', null, 404);
+        }
+
         return $this->successResponse(
             'Import status fetched successfully.',
-            $this->imports->importStatus($whatsappCommunityImport)
+            $this->imports->importStatus($categoryWhatsappGroupImport)
         );
     }
 
@@ -134,16 +142,20 @@ class AdminWhatsAppCommunityImportController extends Controller
         );
     }
 
-    public function destroy(WhatsAppCommunityImport $whatsappCommunityImport): JsonResponse
+    public function destroy(WhatsAppCommunityImport $categoryWhatsappGroupImport): JsonResponse
     {
         $forbidden = $this->denyUnlessCanImport(request()->user());
         if ($forbidden) {
             return $forbidden;
         }
 
-        $this->imports->deleteHistory($whatsappCommunityImport);
+        if ($categoryWhatsappGroupImport->import_type !== WhatsAppCommunityImport::TYPE_CATEGORY_GROUPS) {
+            return $this->errorResponse('Import record not found.', null, 404);
+        }
 
-        return $this->successResponse('Import history deleted. Imported locations were not changed.');
+        $this->imports->deleteHistory($categoryWhatsappGroupImport);
+
+        return $this->successResponse('Import history deleted. Imported WhatsApp groups were not changed.');
     }
 
     public function template()
@@ -190,7 +202,7 @@ class AdminWhatsAppCommunityImportController extends Controller
         foreach (self::REQUIRED_PERMISSIONS as $slug) {
             if (! $user->hasPermissionTo($slug, PermissionCatalog::GUARD)) {
                 return $this->errorResponse(
-                    'Forbidden. You do not have permission to import locations.',
+                    'Forbidden. You do not have permission to import WhatsApp groups.',
                     null,
                     403
                 );

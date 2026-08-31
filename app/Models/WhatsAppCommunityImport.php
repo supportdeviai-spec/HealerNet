@@ -7,11 +7,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WhatsAppCommunityImport extends Model
 {
+    public const TYPE_LOCATION = 'location';
+
+    public const TYPE_CATEGORY_GROUPS = 'category_groups';
+
     protected $table = 'whatsapp_community_imports';
 
     protected $fillable = [
         'user_id',
         'file_name',
+        'import_type',
         'file_path',
         'status',
         'total_rows',
