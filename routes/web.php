@@ -1,9 +1,10 @@
 <?php
 
+use App\Http\Controllers\PageController;
 use Illuminate\Support\Facades\Route;
 
-Route::redirect('/terms-blade', '/pages/terms-and-conditions');
-Route::redirect('/privacy-blade', '/pages/privacy-policy');
+Route::get('/terms-blade', [PageController::class, 'terms']);
+Route::get('/privacy-blade', [PageController::class, 'privacy']);
 
 Route::get('/reset-password/{token}', function () {
     return view('welcome');

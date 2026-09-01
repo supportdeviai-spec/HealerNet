@@ -2,156 +2,119 @@
 
 namespace App\Services;
 
-use App\Models\Category;
+use App\Models\CityWhatsAppGroup;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CommunityAssignmentService
 {
-    public function __construct(
-        private readonly UserCategoryService $userCategoryService,
-        private readonly WhatsAppGroupResolver $groupResolver,
-    ) {
-    }
-
     /**
-     * Assign user to the primary WhatsApp group for each selected category.
+     * Assign user to the WhatsApp group mapped to their city (Group Management).
      */
-    public function autoAssign(User $user): array
+    public function autoAssign(User $user)
     {
-        $categories = $this->userCategoryService->resolveCategoryModels($user);
-        if ($categories->isEmpty()) {
-            return ['success' => false, 'message' => 'User has no categories defined.', 'groups' => []];
+        if (!$user->city_id) {
+            return ['success' => false, 'message' => 'User has no district defined.'];
         }
 
-        $assigned = collect();
+        $existing = $user->whatsappGroups()->exists();
+        if ($existing) {
+            return ['success' => true, 'message' => 'User is already assigned to a community.'];
+        }
+
+        $group = null;
 
         try {
-            DB::transaction(function () use ($user, $categories, &$assigned) {
-                foreach ($categories as $category) {
-                    if ($this->userAlreadyAssignedForCategory($user, $category->id)) {
-                        continue;
-                    }
+            DB::transaction(function () use ($user, &$group) {
+                $group = $this->findCityWhatsAppGroup($user, forAssignment: true);
 
-                    $group = $this->groupResolver->forCategory($category->id);
-                    if (!$group) {
-                        continue;
-                    }
+                if (!$group) {
+                    throw new \Exception('No active WhatsApp community is mapped to this district.');
+                }
 
-                    $group = WhatsAppGroup::query()->whereKey($group->id)->lockForUpdate()->first();
-                    if (!$group || $group->status !== 'active') {
-                        continue;
-                    }
+                $user->whatsappGroups()->attach($group->id, ['joined_at' => now()]);
+                $group->increment('current_members');
 
-                    if ($group->max_members && $group->current_members >= $group->max_members) {
-                        continue;
-                    }
-
-                    $user->whatsappGroups()->attach($group->id, ['joined_at' => now()]);
-                    $group->increment('current_members');
-                    $group->refresh();
-
-                    if ($group->max_members && $group->current_members >= $group->max_members) {
-                        $group->update(['status' => 'full']);
-                        Log::info("System Auth: Auto-Closed WhatsApp Group ID: {$group->id} as it reached max_members.");
-                    }
-
-                    $assigned->push($group);
+                if ($group->max_members && $group->current_members >= $group->max_members) {
+                    $group->update(['status' => 'full']);
+                    Log::info("System Auth: Auto-Closed WhatsApp Group ID: {$group->id} as it reached max_members.");
                 }
             });
 
-            $user->load('whatsappGroups');
-
-            return [
-                'success' => $assigned->isNotEmpty() || $user->whatsappGroups->isNotEmpty(),
-                'groups' => $assigned->values()->all(),
-                'message' => $assigned->isNotEmpty()
-                    ? 'User assigned to community group(s).'
-                    : 'No matching WhatsApp communities were available for assignment.',
-            ];
+            return ['success' => true, 'group' => $group];
         } catch (\Exception $e) {
             Log::warning("Community Auto Assignment Failed for User {$user->id}: " . $e->getMessage());
-
-            return ['success' => false, 'message' => $e->getMessage(), 'groups' => []];
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 
     /**
-     * Per-category primary group results for display (registration success, dashboard).
-     *
-     * @return Collection<int, array<string, mixed>>
-     */
-    public function findGroupsForUserCategories(User $user): Collection
-    {
-        return $this->userCategoryService->resolveCategoryModels($user)->map(function (Category $category) {
-            $group = $this->groupResolver->forCategory($category->id);
-
-            if (!$group) {
-                return $this->formatCategoryResult(
-                    $category,
-                    null,
-                    'not_found',
-                    'No WhatsApp group is currently available for this category.'
-                );
-            }
-
-            return $this->formatCategoryResult($category, $group, 'matched');
-        });
-    }
-
-    /**
-     * WhatsApp groups for welcome email: assigned groups first, else category-primary matches.
-     *
-     * @return Collection<int, WhatsAppGroup>
-     */
-    public function welcomeCommunityGroups(User $user): Collection
-    {
-        $user->loadMissing(['whatsappGroups.category']);
-
-        if ($user->whatsappGroups->isNotEmpty()) {
-            return $user->whatsappGroups->values();
-        }
-
-        return $this->findGroupsForUserCategories($user)
-            ->filter(fn (array $row) => $row['status'] === 'matched' && $row['group'] instanceof WhatsAppGroup)
-            ->map(fn (array $row) => $row['group'])
-            ->values();
-    }
-
-    /**
-     * @deprecated Use welcomeCommunityGroups() for multi-category support.
+     * WhatsApp group for welcome email: already assigned, else city mapping from Group Management.
      */
     public function welcomeCommunityGroup(User $user): ?WhatsAppGroup
     {
-        return $this->welcomeCommunityGroups($user)->first();
+        $user->loadMissing(['whatsappGroups']);
+
+        $assigned = $user->whatsappGroups->first();
+        if ($assigned) {
+            return $assigned;
+        }
+
+        return $this->findCityWhatsAppGroup($user, forAssignment: false);
     }
 
-    private function userAlreadyAssignedForCategory(User $user, string $categoryId): bool
+    /**
+     * Active WhatsApp group linked to the user's city (city-wise from Group Management).
+     */
+    private function findCityWhatsAppGroup(User $user, bool $forAssignment = false): ?WhatsAppGroup
     {
-        return $user->whatsappGroups()
-            ->where('whatsapp_groups.category_id', $categoryId)
-            ->exists();
-    }
+        if (!$user->city_id) {
+            return null;
+        }
 
-    private function formatCategoryResult(
-        Category $category,
-        ?WhatsAppGroup $group,
-        string $status,
-        ?string $message = null
-    ): array {
-        return [
-            'category_id' => $category->id,
-            'category_name' => $category->name,
-            'status' => $status,
-            'message' => $message,
-            'group' => $group,
-            'group_id' => $group?->id,
-            'group_name' => $group?->name,
-            'whatsapp_url' => $group?->whatsapp_url,
-            'description' => $group?->description,
-        ];
+        $mappingQuery = CityWhatsAppGroup::query()
+            ->where('city_id', $user->city_id)
+            ->where('status', 'active')
+            ->orderBy('display_order')
+            ->orderBy('id');
+
+        if ($forAssignment) {
+            $mappingQuery->lockForUpdate();
+        }
+
+        $mappings = $mappingQuery->get();
+        if ($mappings->isEmpty()) {
+            return null;
+        }
+
+        $groupQuery = WhatsAppGroup::query()
+            ->whereIn('id', $mappings->pluck('whatsapp_group_id'))
+            ->whereIn('status', ['active', 'full']);
+
+        if ($forAssignment) {
+            $groupQuery->lockForUpdate();
+        }
+
+        $groupsById = $groupQuery->get()->keyBy('id');
+
+        $ordered = $mappings
+            ->map(fn (CityWhatsAppGroup $mapping) => $groupsById->get($mapping->whatsapp_group_id))
+            ->filter();
+
+        if ($ordered->isEmpty()) {
+            return null;
+        }
+
+        if ($forAssignment) {
+            $withCapacity = $ordered->first(function (WhatsAppGroup $group) {
+                return !$group->max_members || $group->current_members < $group->max_members;
+            });
+
+            return $withCapacity;
+        }
+
+        return $ordered->first();
     }
 }

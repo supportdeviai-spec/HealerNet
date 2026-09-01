@@ -14,6 +14,9 @@ export const WHATSAPP_IMPORT_PERMISSIONS = [
   'countries.create',
   'states.create',
   'cities.create',
+  'whatsapp-groups.create',
+  'whatsapp-groups.edit',
+  'community-groups.edit',
 ];
 
 const MAX_IMPORT_BYTES = 200 * 1024 * 1024;
@@ -328,8 +331,8 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
       {!preview && !result && !processing && (
         <>
           <p className="text-sm mb-3" style={{ color: t.textMuted }}>
-            Upload one Excel file with columns: Country, State, District, and optional Status (Active or Inactive).
-            Existing locations are updated when the same country/state/district row appears again.
+            Upload one Excel file with columns: Country, State, District, WhatsApp Group Name, WhatsApp Group Link, Status, Description.
+            Description and Status are optional. Existing values are never overwritten by blank cells.
           </p>
           <input
             ref={inputRef}
@@ -422,7 +425,7 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
                 </table>
               </div>
               <p className="text-[11px] mt-2" style={{ color: t.textFaint }}>
-                History delete is on the Import History page. Deleting history does not delete imported locations.
+                History delete is on the Import History page. Deleting history does not delete imported locations or WhatsApp groups.
               </p>
             </div>
           )}
@@ -482,7 +485,8 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
             <Stat t={t} label="Countries new / existing" value={`${summary.countries?.new ?? 0} / ${summary.countries?.existing ?? 0}`} />
             <Stat t={t} label="States new / existing" value={`${summary.states?.new ?? 0} / ${summary.states?.existing ?? 0}`} />
             <Stat t={t} label="Districts new / existing" value={`${summary.districts?.new ?? 0} / ${summary.districts?.existing ?? 0}`} />
-            <Stat t={t} label="District updates" value={summary.updated?.districts ?? 0} />
+            <Stat t={t} label="Groups new / existing" value={`${summary.whatsapp_groups?.new ?? 0} / ${summary.whatsapp_groups?.existing ?? 0}`} />
+            <Stat t={t} label="Updates" value={(summary.updated?.districts ?? 0) + (summary.updated?.whatsapp_groups ?? 0)} />
             <Stat t={t} label="Duplicates" value={summary.skipped_duplicates ?? 0} />
             <Stat t={t} label="Errors / Conflicts" value={`${summary.errors ?? 0} / ${summary.conflicts ?? 0}`} tone={(summary.errors || summary.conflicts) ? 'danger' : 'ok'} />
           </div>
@@ -546,7 +550,7 @@ export function WhatsAppCommunityImportHistoryModal({ t, toast, open, onClose })
       footer={<Button variant="outline" onClick={onClose} style={{ color: t.text, borderColor: t.border }}>Close</Button>}
     >
       <p className="text-sm mb-3" style={{ color: t.textMuted }}>
-        This is only the import log. Deleting a history row does not delete countries, states, or districts.
+        This is only the import log. Deleting a history row does not delete countries, states, districts, or WhatsApp groups.
       </p>
       <div className="rounded-xl border overflow-hidden" style={{ borderColor: t.border }}>
         <table className="w-full text-sm">
@@ -654,7 +658,7 @@ function HistoryDeleteConfirm({ t, open, fileName, loading, onCancel, onConfirm 
         </div>
         <p className="text-sm leading-relaxed mb-7 max-w-[340px] mx-auto" style={{ color: t.textMuted }}>
           {fileName ? `"${fileName}" will be removed from the import log.` : 'This history row will be removed.'}
-          {' '}Imported countries, states, and districts will not be deleted.
+          {' '}Imported countries, districts, and WhatsApp groups will not be deleted.
         </p>
         <div className="flex items-center justify-center gap-3">
           <button

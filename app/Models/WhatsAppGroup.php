@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Services\WhatsAppGroupResolver;
+use App\Enums\Status;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -12,9 +12,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class WhatsAppGroup extends Model
 {
     use HasUuids;
-
-    /** Normal WhatsApp group member limit. */
-    public const MAX_MEMBERS = 1024;
 
     protected $table = 'whatsapp_groups';
 
@@ -26,7 +23,6 @@ class WhatsAppGroup extends Model
         'max_members',
         'current_members',
         'status',
-        'is_primary',
     ];
 
     protected function casts(): array
@@ -34,13 +30,25 @@ class WhatsAppGroup extends Model
         return [
             'max_members' => 'integer',
             'current_members' => 'integer',
-            'is_primary' => 'boolean',
         ];
     }
 
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    public function cities(): BelongsToMany
+    {
+        // Explicit keys: Laravel would otherwise infer whats_app_group_id from WhatsAppGroup
+        return $this->belongsToMany(City::class, 'city_whatsapp_groups', 'whatsapp_group_id', 'city_id')
+            ->withPivot(['display_order', 'status'])
+            ->withTimestamps();
+    }
+
+    public function cityMappings()
+    {
+        return $this->hasMany(CityWhatsAppGroup::class, 'whatsapp_group_id');
     }
 
     public function members(): BelongsToMany
@@ -52,11 +60,6 @@ class WhatsAppGroup extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', 'active');
-    }
-
-    public function scopeEligiblePrimary(Builder $query): Builder
-    {
-        return app(WhatsAppGroupResolver::class)->applyEligiblePrimaryScope($query);
     }
 
     public function getWhatsappLinkAttribute(): ?string

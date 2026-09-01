@@ -25,6 +25,9 @@ class AdminWhatsAppCommunityImportController extends Controller
         'countries.create',
         'states.create',
         'cities.create',
+        'whatsapp-groups.create',
+        'whatsapp-groups.edit',
+        'community-groups.edit',
     ];
 
     public function __construct(private readonly WhatsAppCommunityImportService $imports) {}
@@ -143,7 +146,7 @@ class AdminWhatsAppCommunityImportController extends Controller
 
         $this->imports->deleteHistory($whatsappCommunityImport);
 
-        return $this->successResponse('Import history deleted. Imported locations were not changed.');
+        return $this->successResponse('Import history deleted. Imported locations and WhatsApp groups were not changed.');
     }
 
     public function template()
@@ -190,7 +193,7 @@ class AdminWhatsAppCommunityImportController extends Controller
         foreach (self::REQUIRED_PERMISSIONS as $slug) {
             if (! $user->hasPermissionTo($slug, PermissionCatalog::GUARD)) {
                 return $this->errorResponse(
-                    'Forbidden. You do not have permission to import locations.',
+                    'Forbidden. You do not have permission to import WhatsApp communities.',
                     null,
                     403
                 );

@@ -9,7 +9,6 @@ use App\Http\Requests\Admin\UpdateCommunityGroupRequest;
 use App\Models\City;
 use App\Models\CityWhatsAppGroup;
 use App\Models\WhatsAppGroup;
-use App\Services\CityCategoryMappingGuard;
 use App\Services\LocationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,10 +18,8 @@ class AdminCommunityGroupController extends Controller
 {
     use RespondsWithJson;
 
-    public function __construct(
-        private readonly LocationService $locationService,
-        private readonly CityCategoryMappingGuard $mappingGuard,
-    ) {
+    public function __construct(private readonly LocationService $locationService)
+    {
     }
 
     public function index(Request $request): JsonResponse
@@ -49,10 +46,6 @@ class AdminCommunityGroupController extends Controller
         $data = $request->validated();
         $data['display_order'] = $data['display_order'] ?? 0;
 
-        if ($response = $this->validateMapping($data)) {
-            return $response;
-        }
-
         $mapping = CityWhatsAppGroup::create($data);
 
         return $this->successResponse(
@@ -77,10 +70,6 @@ class AdminCommunityGroupController extends Controller
     {
         $data = $request->validated();
         $data['display_order'] = $data['display_order'] ?? $communityGroup->display_order;
-
-        if ($response = $this->validateMapping($data, $communityGroup->id)) {
-            return $response;
-        }
 
         $communityGroup->update($data);
 
@@ -177,40 +166,5 @@ class AdminCommunityGroupController extends Controller
             ->where('community_members.whatsapp_group_id', $mapping->whatsapp_group_id)
             ->where('users.city_id', $mapping->city_id)
             ->count();
-    }
-
-    private function validateMapping(array $data, ?int $excludeMappingId = null): ?JsonResponse
-    {
-        $group = WhatsAppGroup::query()->find($data['whatsapp_group_id'] ?? null);
-        if (!$group) {
-            return $this->errorResponse('Selected WhatsApp group was not found.', [], 422);
-        }
-
-        if ($this->mappingGuard->groupRequiresCategory($group)) {
-            return $this->errorResponse(
-                'Assign a healthcare category to this WhatsApp group in WhatsApp Communities before mapping it to a district.',
-                [],
-                422
-            );
-        }
-
-        $status = is_object($data['status'] ?? null)
-            ? $data['status']->value
-            : (string) ($data['status'] ?? 'active');
-
-        if ($this->mappingGuard->wouldCreateDuplicate(
-            (int) $data['city_id'],
-            (string) $data['whatsapp_group_id'],
-            $status,
-            $excludeMappingId
-        )) {
-            return $this->errorResponse(
-                'Another active WhatsApp group is already mapped to this district for the same healthcare category.',
-                [],
-                422
-            );
-        }
-
-        return null;
     }
 }

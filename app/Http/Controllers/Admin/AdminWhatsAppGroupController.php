@@ -9,7 +9,6 @@ use App\Http\Requests\Admin\StoreWhatsAppGroupRequest;
 use App\Http\Requests\Admin\UpdateWhatsAppGroupRequest;
 use App\Models\WhatsAppGroup;
 use App\Services\GuardedRecordDeletionService;
-use App\Services\WhatsAppGroupPrimaryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,17 +16,13 @@ class AdminWhatsAppGroupController extends Controller
 {
     use RespondsWithJson;
 
-    public function __construct(
-        private readonly GuardedRecordDeletionService $guardedDeletion,
-        private readonly WhatsAppGroupPrimaryService $primaryService,
-    ) {
+    public function __construct(private readonly GuardedRecordDeletionService $guardedDeletion)
+    {
     }
 
     public function index(Request $request): JsonResponse
     {
-        $query = WhatsAppGroup::query()
-            ->with(['category:id,name'])
-            ->withCount(['members'])
+        $query = WhatsAppGroup::withCount(['members', 'cityMappings'])
             ->orderByDesc('created_at');
 
         if ($request->filled('search')) {
@@ -40,10 +35,6 @@ class AdminWhatsAppGroupController extends Controller
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
-        }
-
-        if ($request->has('is_primary')) {
-            $query->where('is_primary', $request->boolean('is_primary'));
         }
 
         if ($request->boolean('active_only')) {
@@ -72,21 +63,11 @@ class AdminWhatsAppGroupController extends Controller
 
     public function store(StoreWhatsAppGroupRequest $request): JsonResponse
     {
-        $data = $request->validated();
-        $isPrimary = (bool) ($data['is_primary'] ?? false);
-        unset($data['is_primary']);
-
-        $data['max_members'] = $data['max_members'] ?? WhatsAppGroup::MAX_MEMBERS;
-
-        $group = WhatsAppGroup::create($data);
-
-        if ($isPrimary) {
-            $group = $this->primaryService->setPrimary($group);
-        }
+        $group = WhatsAppGroup::create($request->validated());
 
         return $this->successResponse(
             'WhatsApp group created successfully.',
-            $group->fresh(['category:id,name']),
+            $group,
             [],
             201
         );
@@ -96,15 +77,13 @@ class AdminWhatsAppGroupController extends Controller
     {
         return $this->successResponse(
             'WhatsApp group fetched successfully.',
-            $whatsappGroup->load(['category:id,name'])
+            $whatsappGroup->load(['category:id,name', 'cityMappings.city.region.country'])
         );
     }
 
     public function update(UpdateWhatsAppGroupRequest $request, WhatsAppGroup $whatsappGroup): JsonResponse
     {
         $data = $request->validated();
-        $isPrimary = array_key_exists('is_primary', $data) ? (bool) $data['is_primary'] : null;
-        unset($data['is_primary']);
 
         if ($whatsappGroup->status === 'full' && ($data['max_members'] ?? 0) > $whatsappGroup->current_members) {
             $data['status'] = 'active';
@@ -112,15 +91,9 @@ class AdminWhatsAppGroupController extends Controller
 
         $whatsappGroup->update($data);
 
-        if ($isPrimary === true) {
-            $whatsappGroup = $this->primaryService->setPrimary($whatsappGroup);
-        } elseif ($isPrimary === false && $whatsappGroup->is_primary) {
-            $whatsappGroup = $this->primaryService->clearPrimary($whatsappGroup);
-        }
-
         return $this->successResponse(
             'WhatsApp group updated successfully.',
-            $whatsappGroup->fresh(['category:id,name'])
+            $whatsappGroup->fresh()
         );
     }
 

@@ -7,7 +7,6 @@ use App\Models\User;
 use App\Repositories\Contracts\UserDashboardRepositoryInterface;
 use App\Services\CommunityAssignmentService;
 use App\Services\LocationService;
-use App\Services\UserCategoryService;
 use Illuminate\Support\Facades\Hash;
 
 class UserDashboardRepository implements UserDashboardRepositoryInterface
@@ -15,20 +14,19 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
     public function __construct(
         private readonly CommunityAssignmentService $assignmentService,
         private readonly LocationService $locationService,
-        private readonly UserCategoryService $userCategoryService,
     ) {
     }
 
     public function getDashboardData(User $user): array
     {
-        $user->load(['category', 'categories', 'whatsappGroups', 'country', 'region', 'city']);
+        $user->load(['category', 'whatsappGroups', 'country', 'region', 'city']);
 
-        if ($this->userCategoryService->resolveCategoryIds($user)->isEmpty()) {
+        if (!$user->category_id) {
             $defaultCat = Category::where('slug', 'yoga')->first() ?? Category::first();
             if ($defaultCat) {
-                $this->userCategoryService->sync($user, [$defaultCat->id]);
+                $user->update(['category_id' => $defaultCat->id]);
                 $this->assignmentService->autoAssign($user->fresh());
-                $user->load(['category', 'categories', 'whatsappGroups']);
+                $user->load(['category', 'whatsappGroups']);
             }
         }
 
@@ -39,30 +37,18 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
             $user->country_id,
             $user->region_id,
             $user->city_id,
-            $this->userCategoryService->resolveCategoryIds($user)->isNotEmpty() ? 'yes' : null,
+            $user->category_id,
             $user->is_verified,
         ];
         $filledCount = count(array_filter($fields));
         $completionPct = round(($filledCount / count($fields)) * 100);
 
-        $categoryCommunityGroups = $this->assignmentService
-            ->findGroupsForUserCategories($user)
-            ->map(fn (array $row) => [
-                'category_id' => $row['category_id'],
-                'category_name' => $row['category_name'],
-                'status' => $row['status'],
-                'message' => $row['message'] ?? null,
-                'group_id' => $row['group_id'] ?? null,
-                'group_name' => $row['group_name'] ?? null,
-                'whatsapp_url' => $row['whatsapp_url'] ?? null,
-                'description' => $row['description'] ?? null,
-            ])
-            ->values();
-
         $community = $user->whatsappGroups->first();
+        $cityGroups = $user->city_id
+            ? $this->locationService->listCommunityGroupsForPublic($user->city_id)
+            : collect();
+
         $categories = Category::where('status', 'active')->get();
-        $categoryLabel = $user->categories->pluck('name')->implode(', ')
-            ?: ($user->category?->name ?? 'General');
 
         $timeline = [
             [
@@ -78,15 +64,15 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
                 'icon' => '✉️',
             ],
             [
-                'title' => 'Selected Specialty Categories (' . $categoryLabel . ')',
-                'timestamp' => $categoryLabel !== 'General' ? 'Selected' : 'Pending Selection',
-                'status' => $categoryLabel !== 'General' ? 'completed' : 'pending',
+                'title' => 'Selected Specialty Category (' . ($user->category?->name ?? 'General') . ')',
+                'timestamp' => $user->category ? 'Selected' : 'Pending Selection',
+                'status' => $user->category ? 'completed' : 'pending',
                 'icon' => '🏷️',
             ],
             [
-                'title' => 'Local Community Groups (' . $categoryCommunityGroups->where('status', 'matched')->count() . ')',
-                'timestamp' => $categoryCommunityGroups->where('status', 'matched')->isNotEmpty() ? 'Available' : 'Pending',
-                'status' => $categoryCommunityGroups->where('status', 'matched')->isNotEmpty() ? 'completed' : 'pending',
+                'title' => 'Local Community Groups (' . ($cityGroups->count()) . ')',
+                'timestamp' => $cityGroups->isNotEmpty() ? 'Available' : 'Pending',
+                'status' => $cityGroups->isNotEmpty() ? 'completed' : 'pending',
                 'icon' => '💬',
             ],
         ];
@@ -117,13 +103,6 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
                 'description' => $user->category->description,
                 'icon' => $user->category->icon,
             ] : null,
-            'categories' => $user->categories->map(fn (Category $category) => [
-                'id' => $category->id,
-                'name' => $category->name,
-                'slug' => $category->slug,
-                'description' => $category->description,
-                'icon' => $category->icon,
-            ])->values(),
             'community_group' => $community ? [
                 'id' => $community->id,
                 'group_name' => $community->name,
@@ -131,20 +110,18 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
                 'whatsapp_url' => $community->whatsapp_url,
                 'status' => $community->status,
             ] : null,
-            'community_groups' => $user->whatsappGroups->map(fn ($group) => [
-                'id' => $group->id,
-                'name' => $group->name,
-                'whatsapp_url' => $group->whatsapp_url,
-                'description' => $group->description,
-                'category_id' => $group->category_id,
+            'community_groups' => $cityGroups->map(fn ($group) => [
+                'id' => $group['id'] ?? null,
+                'name' => $group['name'] ?? null,
+                'whatsapp_url' => $group['whatsapp_url'] ?? null,
+                'description' => $group['description'] ?? null,
             ])->values(),
-            'category_community_groups' => $categoryCommunityGroups,
             'registration_status' => [
                 'registration_completed' => true,
                 'email_verified' => (bool) $user->is_verified,
                 'community_assigned' => $user->whatsappGroups->isNotEmpty(),
             ],
-            'categories_options' => $categories,
+            'categories' => $categories,
             'timeline' => $timeline,
             'notifications' => [],
             'unread_notifications_count' => 0,
@@ -155,7 +132,7 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
 
     public function updateProfile(User $user, array $data): User
     {
-        $oldCategoryIds = $this->userCategoryService->resolveCategoryIds($user)->all();
+        $oldCategoryId = $user->category_id;
 
         $user->update([
             'name' => $data['name'] ?? $user->name,
@@ -165,21 +142,12 @@ class UserDashboardRepository implements UserDashboardRepositoryInterface
             'city_id' => $data['city_id'] ?? $user->city_id,
         ]);
 
-        $newCategoryIds = null;
-        if (!empty($data['category_ids']) && is_array($data['category_ids'])) {
-            $newCategoryIds = $data['category_ids'];
-        } elseif (isset($data['category_id'])) {
-            $newCategoryIds = [$data['category_id']];
+        if (isset($data['category_id']) && $data['category_id'] != $oldCategoryId) {
+            $user->update(['category_id' => $data['category_id']]);
+            $this->assignmentService->autoAssign($user->fresh());
         }
 
-        if ($newCategoryIds !== null) {
-            $this->userCategoryService->sync($user, $newCategoryIds);
-            if ($newCategoryIds !== $oldCategoryIds) {
-                $this->assignmentService->autoAssign($user->fresh());
-            }
-        }
-
-        return $user->fresh(['category', 'categories', 'whatsappGroups', 'country', 'region', 'city']);
+        return $user->fresh(['category', 'whatsappGroups', 'country', 'region', 'city']);
     }
 
     public function changePassword(User $user, string $newPassword): bool

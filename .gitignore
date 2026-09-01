@@ -47,5 +47,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
-public/banner/uploads/
+public/banner/uploads/*
+!public/banner/uploads/.gitkeep
 storage/app/public/banners/
+storage/app/private/

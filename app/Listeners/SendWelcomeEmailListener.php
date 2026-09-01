@@ -3,28 +3,23 @@
 namespace App\Listeners;
 
 use App\Events\UserRegistered;
-use App\Models\User;
 use App\Services\EmailService;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
 
-class SendWelcomeEmailListener
+class SendWelcomeEmailListener implements ShouldQueue
 {
-    public function __construct(
-        protected EmailService $emailService
-    ) {}
+    use InteractsWithQueue;
+
+    protected EmailService $emailService;
+
+    public function __construct(EmailService $emailService)
+    {
+        $this->emailService = $emailService;
+    }
 
     public function handle(UserRegistered $event): void
     {
-        $user = User::query()
-            ->with(['country', 'region', 'city', 'category', 'categories', 'role', 'whatsappGroups'])
-            ->find($event->user->id);
-
-        if (!$user) {
-            Log::warning('Welcome email skipped: user not found.', ['user_id' => $event->user->id]);
-
-            return;
-        }
-
-        $this->emailService->sendWelcomeEmail($user);
+        $this->emailService->sendWelcomeEmail($event->user);
     }
 }

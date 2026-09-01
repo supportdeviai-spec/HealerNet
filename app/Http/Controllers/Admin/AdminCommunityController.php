@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\CommunityGroup;
 use App\Models\Category;
-use App\Models\WhatsAppGroup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,7 +44,7 @@ class AdminCommunityController extends Controller
             'category_id' => 'required|uuid|exists:categories,id',
             'name' => 'required|string|max:255',
             'whatsapp_url' => 'required|url',
-            'max_members' => 'nullable|integer|min:1|max:'.WhatsAppGroup::MAX_MEMBERS,
+            'max_members' => 'nullable|integer',
             'status' => 'required|in:active,full,inactive',
         ]);
 
@@ -67,7 +66,7 @@ class AdminCommunityController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'whatsapp_url' => 'required|url',
-            'max_members' => 'nullable|integer|min:1|max:'.WhatsAppGroup::MAX_MEMBERS,
+            'max_members' => 'nullable|integer',
             'status' => 'required|in:active,full,inactive',
         ]);
 

@@ -23,8 +23,6 @@ import RolesManagementPage from "./RolesManagementPage";
 import PermissionsManagementPage from "./PermissionsManagementPage";
 import { Select, RefreshButton, refreshTableStyle } from "../../components/admin/AdminShared";
 import { usePermissions, PERMISSION_DENIED_MESSAGE } from "../../hooks/usePermissions";
-import CategoryMultiSelect from "../../components/common/CategoryMultiSelect";
-import { CategoryWhatsAppGroupImportButton } from "../../components/admin/CategoryWhatsAppGroupImportModal";
 
 const MOBILE_MAX_DIGITS = 10;
 const INTL_MOBILE_MAX_DIGITS = 15;
@@ -125,8 +123,6 @@ function userStatusForApi(status) {
 const FONT_DISPLAY = "'Playfair Display', Georgia, serif";
 const FONT_BODY = "'Plus Jakarta Sans', system-ui, sans-serif";
 const FONT_MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
-/** Normal WhatsApp group member limit. */
-const WHATSAPP_GROUP_MAX_MEMBERS = 1024;
 
 const RAIL = { bg: "#0E2A1C", bgActive: "rgba(255,255,255,0.10)", indicator: "#D4A62C", text: "#CFE0D2", textDim: "#6C8574", border: "rgba(141,198,63,0.14)", danger: "#E8ABA3" };
 const RAIL_LIGHT = { bg: "#FFFFFF", bgActive: "rgba(31,92,59,0.08)", indicator: "#B8841E", text: "#0F241A", textDim: "#7C8F81", border: "rgba(21,48,43,0.08)", danger: "#C1483F" };
@@ -156,7 +152,7 @@ function genCommunities() {
   CATEGORIES.forEach((cat) => {
     const groups = cat.id === "c1" ? 3 : cat.id === "c3" ? 3 : 2;
     for (let i = 1; i <= groups; i++) {
-      const max = WHATSAPP_GROUP_MAX_MEMBERS;
+      const max = 250;
       const members = i === 1 ? max : i === 2 ? Math.floor(max * 0.72) : Math.floor(max * 0.31);
       list.push({
         id: `g${n}`, name: `${cat.name.split(" ")[0]} Group ${i}`, categoryId: cat.id,
@@ -637,6 +633,7 @@ const NAV = [
   {
     section: "Locations", items: [
       { id: "locations", label: "Location Management", icon: MapPin },
+      { id: "group-management", label: "Group Management", icon: Network },
     ]
   },
   {
@@ -1244,6 +1241,9 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
   const verificationRate = metrics?.verification_rate ?? 0;
   const activeCommunities = metrics?.active_communities ?? COMMUNITIES.length;
   const fullCommunities = metrics?.full_communities ?? COMMUNITIES.filter((c) => c.status === "Full").length;
+  const communityCount = metrics?.group_management_count
+    ?? metrics?.community_count
+    ?? 0;
   const totalCountries = metrics?.total_countries ?? 0;
 
   const regGrowthData = Array.isArray(metrics?.reg_growth)
@@ -1291,6 +1291,7 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
   const showCommunities = canAccessSection("communities");
   const showCategories = canAccessSection("categories");
   const showLocations = canAccessSection("locations");
+  const showGroupManagement = canAccessSection("group-management");
   const showSettings = canAccessSection("settings");
 
   return (
@@ -1310,6 +1311,16 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
         )}
         {showCategories && (
           <Kpi t={t} label="Healthcare Categories" value={metrics?.total_categories ?? CATEGORIES.length} tone="info" onClick={() => onNav("categories")} />
+        )}
+        {showGroupManagement && (
+          <Kpi
+            t={t}
+            label="Group Management"
+            value={Number(communityCount).toLocaleString()}
+            trend={spark(Math.max(8, Number(communityCount) || 8), 4)}
+            tone="brand"
+            onClick={() => onNav("group-management")}
+          />
         )}
         {showLocations && (
           <Kpi t={t} label="Countries" value={totalCountries} tone="info" onClick={() => onNav("locations")} />
@@ -1886,9 +1897,7 @@ function UserModal({ t, mode, user, categories = [], onClose, onSuccess, toast }
     password: "",
     role_id: user?.role_id || user?.role?.id || "",
     role_ids: user?.role_ids || (user?.role_id ? [user.role_id] : []),
-    category_ids: user?.category_ids?.length
-      ? user.category_ids
-      : (user?.category_id ? [user.category_id] : []),
+    category_id: user?.category_id || (categories[0]?.id || ""),
     country_id: user?.country_id || user?.country?.id || "",
     state_id: user?.state_id || user?.state?.id || "",
     city_id: user?.city_id || user?.city?.id || "",
@@ -2060,7 +2069,7 @@ function UserModal({ t, mode, user, categories = [], onClose, onSuccess, toast }
         payload.role_ids = form.role_ids?.length ? form.role_ids : [form.role_id];
       }
 
-      if (isMemberRole && form.category_ids?.length) payload.category_ids = form.category_ids;
+      if (isMemberRole && form.category_id) payload.category_id = form.category_id;
       if (form.country_id) payload.country_id = Number(form.country_id);
       if (form.state_id) payload.state_id = Number(form.state_id);
       if (form.city_id) payload.city_id = Number(form.city_id);
@@ -2265,16 +2274,15 @@ function UserModal({ t, mode, user, categories = [], onClose, onSuccess, toast }
         )}
 
         {isMemberRole && (
-          <div className="sm:col-span-2">
-            <CategoryMultiSelect
-              categories={categories}
-              selectedIds={form.category_ids}
-              onChange={(category_ids) => set("category_ids", category_ids)}
-              label="Healthcare Categories"
-              required={false}
-              error={errors.category_ids || errors.category_id || ""}
-            />
-          </div>
+          <Field t={t} label="Healthcare Category" hint="Optional. Used for WhatsApp community assignment.">
+            <Select t={t} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
+              <option value="">Optional</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+            {errors.category_id && <div className="text-xs text-red-500 mt-1 font-medium">{errors.category_id}</div>}
+          </Field>
         )}
 
         <Field t={t} label="Country">
@@ -2342,6 +2350,7 @@ function CategoryRow({ t, c, checked, onCheck, onEdit, onDelete, onToggleStatus 
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
       <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{c.name}</td>
+      <td className="px-4 py-2.5 text-sm max-w-xs truncate" style={{ color: t.textMuted }}>{c.description}</td>
       <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{c.whatsapp_groups_count ?? c.community_groups_count ?? 0}</td>
       <td className="px-4 py-2.5"><StatusBadge t={t} status={displayStatus} /></td>
       <td className="px-4 py-2.5 relative text-right" ref={ref}>
@@ -2440,7 +2449,7 @@ function CategoriesPage({ t, toast }) {
     if (query.trim()) {
       const q = query.toLowerCase();
       list = list.filter((c) =>
-        String(c.name ?? "").toLowerCase().includes(q)
+        [c.name, c.description].some((v) => String(v ?? "").toLowerCase().includes(q))
       );
     }
     if (sort) {
@@ -2490,11 +2499,13 @@ function CategoriesPage({ t, toast }) {
   const exportAs = (fmt) => {
     const columns = [
       { key: "name", label: "Category Name" },
+      { key: "description", label: "Description" },
       { key: "groups", label: "Groups" },
       { key: "status", label: "Status" },
     ];
     const exportData = filtered.map((c) => ({
       name: c.name,
+      description: c.description || "",
       groups: c.community_groups_count ?? 0,
       status: c.status === "paused" ? "Inactive" : (c.status ? c.status.charAt(0).toUpperCase() + c.status.slice(1) : "Active"),
     }));
@@ -2507,6 +2518,7 @@ function CategoriesPage({ t, toast }) {
       const status = (data.status || "active").toLowerCase();
       const payload = {
         name: data.name,
+        description: data.description || null,
         status: status === "paused" ? "inactive" : status,
       };
       const res = await apiFetch(
@@ -2549,6 +2561,7 @@ function CategoriesPage({ t, toast }) {
         method: "PUT",
         body: JSON.stringify({
           name: cat.name,
+          description: cat.description || null,
           status: next,
         }),
       });
@@ -2568,10 +2581,9 @@ function CategoriesPage({ t, toast }) {
           <div className="text-sm" style={{ color: t.textMuted }}>{rows.length} categories in database</div>
         </div>
         <div className="flex items-center gap-2">
-          <CategoryWhatsAppGroupImportButton t={t} toast={toast} onImported={() => fetchCategories()} />
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("Excel")} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
-          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", cat: { name: "", status: "active" } })}>Add Category</Button>
+          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", cat: { name: "", description: "", status: "active" } })}>Add Category</Button>
         </div>
       </div>
 
@@ -2580,7 +2592,7 @@ function CategoriesPage({ t, toast }) {
           t={t}
           query={query}
           setQuery={setQuery}
-          placeholder="Search category name…"
+          placeholder="Search category name or description…"
           right={
             <>
               {selected.size > 0 && (
@@ -2615,6 +2627,7 @@ function CategoriesPage({ t, toast }) {
                   />
                 </th>
                 <Th t={t} label="Category Name" sortKey="name" sort={sort} onSort={onSort} />
+                <Th t={t} label="Description" />
                 <Th t={t} label="Groups" sortKey="community_groups_count" sort={sort} onSort={onSort} />
                 <Th t={t} label="Status" />
                 <ActionsTh t={t} />
@@ -2624,7 +2637,7 @@ function CategoriesPage({ t, toast }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={5} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : pageRows.length > 0 ? (
@@ -2655,7 +2668,7 @@ function CategoriesPage({ t, toast }) {
                   <Button
                     size="sm"
                     icon={Plus}
-                    onClick={() => setModal({ mode: "create", cat: { name: "", status: "active" } })}
+                    onClick={() => setModal({ mode: "create", cat: { name: "", description: "", status: "active" } })}
                   >
                     Add Category
                   </Button>
@@ -2688,6 +2701,7 @@ function CategoryForm({ t, cat, onChange }) {
   return (
     <div>
       <Field t={t} label="Category Name"><Input style={inputStyle(t)} value={cat.name || ""} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Physical Therapy" /></Field>
+      <Field t={t} label="Description"><textarea style={inputStyle(t)} className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none" rows={3} value={cat.description || ""} onChange={(e) => set("description", e.target.value)} /></Field>
       <Field t={t} label="Status">
         <Select t={t} value={statusValue} onChange={(e) => set("status", e.target.value.toLowerCase())}>
           <option value="Active">Active</option><option value="Inactive">Inactive</option>
@@ -2700,29 +2714,7 @@ function CategoryForm({ t, cat, onChange }) {
 /* =========================================================================
    WHATSAPP COMMUNITIES
    ========================================================================= */
-function formatGroupMemberCount(group = {}) {
-  const joined = Number(group.members_count ?? group.current_members ?? 0);
-  const max = Number(group.max_members ?? 0);
-  if (max > 0) {
-    return `${joined} / ${max}`;
-  }
-  return String(joined);
-}
-
-function normalizeCommunityGroupForm(group = {}) {
-  return {
-    id: group.id,
-    name: group.name || "",
-    whatsapp_url: group.whatsapp_url || group.link || "",
-    category_id: group.category_id || group.category?.id || "",
-    status: group.status || "active",
-    is_primary: Boolean(group.is_primary),
-    max_members: group.max_members ?? group.max ?? WHATSAPP_GROUP_MAX_MEMBERS,
-    members_count: group.members_count ?? group.current_members ?? 0,
-  };
-}
-
-function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink, categoryLabel = "—" }) {
+function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -2735,20 +2727,8 @@ function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink, ca
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
       <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
       <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{g.name}</td>
-      <td className="px-4 py-2.5 text-sm max-w-[180px] truncate" style={{ color: t.textMuted }} title={categoryLabel}>
-        {categoryLabel}
-      </td>
-      <td className="px-4 py-2.5">
-        {g.is_primary ? (
-          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">
-            Primary
-          </span>
-        ) : (
-          <span className="text-xs" style={{ color: t.textMuted }}>—</span>
-        )}
-      </td>
-      <td className="px-4 py-2.5 text-sm font-semibold tabular-nums" style={{ color: t.text }}>
-        {formatGroupMemberCount(g)}
+      <td className="px-4 py-2.5 text-sm max-w-[240px] truncate" style={{ color: t.textMuted }} title={g.description || ""}>
+        {g.description || "—"}
       </td>
       <td className="px-4 py-2.5 text-xs truncate max-w-[200px]" style={{ color: t.textMuted, fontFamily: FONT_MONO }}>
         {g.whatsapp_url || g.link || "-"}
@@ -2771,7 +2751,6 @@ function CommunityRow({ t, g, checked, onCheck, onEdit, onDelete, onCopyLink, ca
 
 function CommunitiesPage({ t, toast, focusCommunity }) {
   const [rows, setRows] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2788,29 +2767,6 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
   const [total, setTotal] = useState(0);
   const pageSize = 10;
   const refreshResetRef = useRef(false);
-
-  const categoryNameById = useMemo(() => {
-    const map = new Map();
-    categories.forEach((cat) => map.set(String(cat.id), cat.name));
-    return map;
-  }, [categories]);
-
-  const openCreateModal = () => setModal({
-    mode: "create",
-    group: normalizeCommunityGroupForm({ status: "active", is_primary: false }),
-  });
-
-  const openEditModal = (group) => setModal({
-    mode: "edit",
-    group: normalizeCommunityGroupForm(group),
-  });
-
-  useEffect(() => {
-    apiFetch("/admin/categories")
-      .then((res) => res.json())
-      .then((json) => setCategories(json?.data || []))
-      .catch(() => setCategories([]));
-  }, []);
 
   useEffect(() => {
     if (!focusCommunity?.key) return;
@@ -2839,13 +2795,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
         page,
         per_page: pageSize,
       };
-      if (["Active", "Full", "Inactive"].includes(filters.status)) {
-        params.status = filters.status.toLowerCase();
-      } else if (filters.status === "Primary") {
-        params.is_primary = 1;
-      } else if (filters.status === "Not primary") {
-        params.is_primary = 0;
-      }
+      if (filters.status !== "All") params.status = filters.status.toLowerCase();
       if (debouncedQuery.trim()) params.search = debouncedQuery.trim();
       if (bustCache) params._ = Date.now();
 
@@ -2910,33 +2860,20 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
       return;
     }
 
-    const payload = {
-      name: data.name.trim(),
-      whatsapp_url: url,
-      max_members: data.max_members ?? data.max ?? WHATSAPP_GROUP_MAX_MEMBERS,
-      status: (data.status || "active").toLowerCase(),
-      category_id: data.category_id || null,
-      is_primary: Boolean(data.is_primary),
-    };
-
-    if (payload.is_primary && !payload.category_id) {
-      toast("Select a healthcare category before marking this group as primary.", "danger");
-      return;
-    }
-
-    const maxMembers = Number(payload.max_members);
-    if (maxMembers < 1 || maxMembers > WHATSAPP_GROUP_MAX_MEMBERS) {
-      toast(`Max members must be between 1 and ${WHATSAPP_GROUP_MAX_MEMBERS}.`, "danger");
-      return;
-    }
-    payload.max_members = maxMembers;
-
     setSaving(true);
     try {
+      const payload = {
+        name: data.name.trim(),
+        description: data.description || null,
+        whatsapp_url: url,
+        max_members: data.max_members ?? data.max ?? 250,
+        status: (data.status || "active").toLowerCase(),
+        category_id: null,
+      };
       await locationApi.adminSaveWhatsAppGroup(payload, modal.mode === "edit" ? data.id : null);
       toast(modal.mode === "create" ? "WhatsApp group created" : "WhatsApp group updated", "success");
       setModal(null);
-      fetchCommunities({ silent: true, bustCache: true });
+      fetchCommunities();
     } catch (err) {
       toast(err?.message || "Failed to save WhatsApp group", "danger");
     } finally {
@@ -2946,12 +2883,13 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
 
   const remove = (id, name = "this group", group = null) => {
     const members = Number(group?.members_count ?? 0);
+    const mappings = Number(group?.city_mappings_count ?? 0);
     setConfirmDelete({
       mode: "confirm",
       action: "single",
       id,
       title: "Permanently delete this WhatsApp group?",
-      text: `Are you sure you want to permanently delete this item?\n\nMembers: ${members}\n\nThis cannot be undone.`,
+      text: `Are you sure you want to permanently delete this item?\n\nMembers: ${members}\nLocation mappings: ${mappings}\n\nThis cannot be undone.${mappings > 0 ? "\nRemove location mappings in Group Management first if delete is blocked." : ""}`,
       confirmText: "Yes, delete",
       tone: "danger",
     });
@@ -3048,7 +2986,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
       mode: "confirm",
       action: "bulk",
       title: "Delete selected groups?",
-      text: `Are you sure you want to permanently delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with assigned members will be blocked.`,
+      text: `Are you sure you want to permanently delete ${selected.size} selected group(s)?\n\nThis cannot be undone.\nGroups with members or district links (Group Management) will be blocked.`,
       confirmText: "Yes, delete",
       tone: "danger",
     });
@@ -3057,17 +2995,13 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
   const exportAs = (fmt) => {
     const columns = [
       { key: "name", label: "Group Name" },
-      { key: "category", label: "Category" },
-      { key: "primary", label: "Primary" },
-      { key: "members_joined", label: "Members Joined" },
+      { key: "description", label: "Description" },
       { key: "link", label: "WhatsApp Link" },
       { key: "status", label: "Status" },
     ];
     const exportData = rows.map((g) => ({
       name: g.name,
-      category: g.category?.name || categoryNameById.get(String(g.category_id)) || "",
-      primary: g.is_primary ? "Yes" : "No",
-      members_joined: formatGroupMemberCount(g),
+      description: g.description || "",
       link: g.whatsapp_url || g.link || "-",
       status: g.status ? String(g.status).charAt(0).toUpperCase() + String(g.status).slice(1) : "Active",
     }));
@@ -3085,7 +3019,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("CSV")} style={{ color: t.text, borderColor: t.border }}>CSV</Button>
           <Button variant="outline" size="sm" icon={Download} onClick={() => exportAs("Excel")} style={{ color: t.text, borderColor: t.border }}>Excel</Button>
-          <Button size="sm" icon={Plus} onClick={openCreateModal}>Add Group</Button>
+          <Button size="sm" icon={Plus} onClick={() => setModal({ mode: "create", group: { name: "", description: "", whatsapp_url: "", status: "active" } })}>Add Group</Button>
         </div>
       </div>
 
@@ -3100,8 +3034,8 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
               {selected.size > 0 && (
                 <Button size="sm" variant="danger" icon={Trash2} onClick={bulkDelete}>Delete ({selected.size})</Button>
               )}
-              <Select t={t} className="w-auto min-w-[120px]" value={filters.status} onChange={(e) => { setFilters({ status: e.target.value }); setPage(1); }}>
-                {["All", "Active", "Full", "Inactive", "Primary", "Not primary"].map((s) => (
+              <Select t={t} className="w-auto min-w-[110px]" value={filters.status} onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPage(1); }}>
+                {["All", "Active", "Full", "Inactive"].map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </Select>
@@ -3129,9 +3063,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   />
                 </th>
                 <Th t={t} label="Group Name" />
-                <Th t={t} label="Category" />
-                <Th t={t} label="Primary" />
-                <Th t={t} label="Members Joined" />
+                <Th t={t} label="Description" />
                 <Th t={t} label="WhatsApp Link" />
                 <Th t={t} label="Status" />
                 <ActionsTh t={t} />
@@ -3141,7 +3073,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={8} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={6} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : rows.length > 0 ? (
@@ -3150,10 +3082,9 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                     key={g.id}
                     t={t}
                     g={g}
-                    categoryLabel={g.category?.name || categoryNameById.get(String(g.category_id)) || "—"}
                     checked={selected.has(g.id)}
                     onCheck={() => toggle(g.id)}
-                    onEdit={() => openEditModal(g)}
+                    onEdit={() => setModal({ mode: "edit", group: g })}
                     onDelete={() => remove(g.id, g.name, g)}
                     onCopyLink={() => copyLink(g.whatsapp_url || g.link)}
                   />
@@ -3173,7 +3104,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
                   <Button
                     size="sm"
                     icon={Plus}
-                    onClick={openCreateModal}
+                    onClick={() => setModal({ mode: "create", group: { name: "", description: "", whatsapp_url: "", status: "active" } })}
                   >
                     Add Group
                   </Button>
@@ -3192,7 +3123,7 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
             <Button variant="outline" onClick={() => setModal(null)} style={{ color: t.text, borderColor: t.border }}>Cancel</Button>
             <Button disabled={saving} onClick={() => save(modal.group)}>{saving ? "Saving…" : (modal.mode === "create" ? "Create Group" : "Save Changes")}</Button>
           </>}>
-          <GroupForm t={t} group={modal.group} categories={categories} onChange={(group) => setModal((m) => ({ ...m, group }))} />
+          <GroupForm t={t} group={modal.group} onChange={(group) => setModal((m) => ({ ...m, group }))} />
         </Modal>
       )}
 
@@ -3212,61 +3143,27 @@ function CommunitiesPage({ t, toast, focusCommunity }) {
     </div>
   );
 }
-function GroupForm({ t, group, categories = [], onChange }) {
+function GroupForm({ t, group, onChange }) {
   const set = (k, v) => onChange({ ...group, [k]: v });
   const statusValue = group.status ? String(group.status).charAt(0).toUpperCase() + String(group.status).slice(1).toLowerCase() : "Active";
   return (
     <div>
       <Field t={t} label="Group Name"><Input style={inputStyle(t)} value={group.name || ""} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Yoga & Movement Cohort 1" /></Field>
-      <Field t={t} label="Healthcare Category" required={Boolean(group.is_primary)}>
-        <Select t={t} value={group.category_id || ""} onChange={(e) => set("category_id", e.target.value || null)}>
-          <option value="">Select category</option>
-          {categories.length ? categories.map((cat) => (
-            <option key={cat.id} value={cat.id}>{cat.name}</option>
-          )) : (
-            <option value="" disabled>No categories loaded</option>
-          )}
-        </Select>
+      <Field t={t} label="Description">
+        <textarea
+          style={inputStyle(t)}
+          className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none"
+          rows={3}
+          value={group.description || ""}
+          onChange={(e) => set("description", e.target.value)}
+          placeholder="Optional group description"
+        />
       </Field>
       <Field t={t} label="WhatsApp URL"><Input style={inputStyle(t)} value={group.whatsapp_url || group.link || ""} onChange={(e) => set("whatsapp_url", e.target.value)} placeholder="https://chat.whatsapp.com/…" /></Field>
-      {group.id ? (
-        <Field t={t} label="Members joined">
-          <p className="text-sm font-semibold tabular-nums" style={{ color: t.text }}>
-            {formatGroupMemberCount(group)}
-          </p>
-          <p className="mt-1 text-xs" style={{ color: t.textMuted }}>
-            HealerNet users assigned to this group at registration.
-          </p>
-        </Field>
-      ) : null}
-      <Field t={t} label="Max members">
-        <Input
-          style={inputStyle(t)}
-          type="number"
-          min={1}
-          max={WHATSAPP_GROUP_MAX_MEMBERS}
-          value={group.max_members ?? WHATSAPP_GROUP_MAX_MEMBERS}
-          onChange={(e) => set("max_members", Math.min(WHATSAPP_GROUP_MAX_MEMBERS, Math.max(1, Number(e.target.value) || WHATSAPP_GROUP_MAX_MEMBERS)))}
-          placeholder={String(WHATSAPP_GROUP_MAX_MEMBERS)}
-        />
-        <p className="mt-1 text-xs" style={{ color: t.textMuted }}>
-          WhatsApp groups support up to {WHATSAPP_GROUP_MAX_MEMBERS} members.
-        </p>
-      </Field>
       <Field t={t} label="Status">
         <Select t={t} value={statusValue} onChange={(e) => set("status", e.target.value.toLowerCase())}>
           <option value="Active">Active</option><option value="Full">Full</option><option value="Inactive">Inactive</option>
         </Select>
-      </Field>
-      <Field t={t} label="Primary group for category">
-        <label className="inline-flex items-center gap-2 text-sm" style={{ color: t.text }}>
-          <input
-            type="checkbox"
-            checked={Boolean(group.is_primary)}
-            onChange={(e) => set("is_primary", e.target.checked)}
-          />
-          Mark as primary
-        </label>
       </Field>
     </div>
   );
@@ -4169,7 +4066,12 @@ export default function App({ currentView }) {
             )}
             {showSection("locations") && (
               <div style={sectionStyle("locations")}>
-                <LocationManagementPage t={t} toast={toast} onNav={nav} />
+                <LocationManagementPage t={t} toast={toast} onNav={nav} variant="locations" />
+              </div>
+            )}
+            {showSection("group-management") && (
+              <div style={sectionStyle("group-management")}>
+                <LocationManagementPage t={t} toast={toast} onNav={nav} variant="groups" />
               </div>
             )}
             {showSection("banners") && (

@@ -6,10 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Concerns\AuthorizesPermissions;
 use App\Models\User;
 use App\Models\Role;
-use App\Rules\ActiveUserCategories;
 use App\Services\CommunityAssignmentService;
 use App\Services\EmailService;
-use App\Services\UserCategoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,7 +23,6 @@ class AdminUserController extends Controller
     public function __construct(
         protected EmailService $emailService,
         protected CommunityAssignmentService $communityAssignment,
-        protected UserCategoryService $userCategoryService,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -34,7 +31,7 @@ class AdminUserController extends Controller
             return $response;
         }
 
-        $users = User::with(['role', 'roles', 'category', 'categories', 'country', 'state', 'city'])
+        $users = User::with(['role', 'roles', 'category', 'country', 'state', 'city'])
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
@@ -46,10 +43,7 @@ class AdminUserController extends Controller
                 $query->where('status', $this->normalizeUserStatus($request->status));
             })
             ->when($request->category_id && $request->category_id !== 'All', function ($query) use ($request) {
-                $query->where(function ($inner) use ($request) {
-                    $inner->where('category_id', $request->category_id)
-                        ->orWhereHas('categories', fn ($categories) => $categories->where('categories.id', $request->category_id));
-                });
+                $query->where('category_id', $request->category_id);
             })
             ->when($request->country_id, function ($query) use ($request) {
                 $query->where('country_id', $request->country_id);
@@ -78,7 +72,7 @@ class AdminUserController extends Controller
             return $response;
         }
 
-        $user->load(['role', 'roles', 'category', 'categories', 'country', 'state', 'city', 'communities', 'profile']);
+        $user->load(['role', 'roles', 'category', 'country', 'state', 'city', 'communities', 'profile']);
 
         return response()->json([
             'status' => 'success',
@@ -104,8 +98,6 @@ class AdminUserController extends Controller
             'role_ids' => 'nullable|array',
             'role_ids.*' => 'uuid|exists:roles,id',
             'category_id' => 'nullable|uuid|exists:categories,id',
-            'category_ids' => ['sometimes', 'array', new ActiveUserCategories(0, UserCategoryService::MAX_CATEGORIES)],
-            'category_ids.*' => 'uuid|exists:categories,id',
             'country_id' => 'nullable|exists:countries,id',
             'region_id' => 'nullable|exists:regions,id',
             'state_id' => 'nullable|exists:regions,id',
@@ -139,7 +131,7 @@ class AdminUserController extends Controller
             'name' => $name,
             'email' => $validated['email'],
             'mobile' => $mobile,
-            'category_id' => $this->resolvePrimaryCategoryId($validated),
+            'category_id' => $validated['category_id'] ?? null,
             'country_id' => $validated['country_id'] ?? null,
             'region_id' => isset($validated['country_id']) ? $this->resolveStateId($validated) : null,
             'city_id' => $validated['city_id'] ?? null,
@@ -150,7 +142,6 @@ class AdminUserController extends Controller
         ]);
 
         $this->syncUserRoles($user, $validated['role_ids'] ?? [$roleId]);
-        $this->syncUserCategories($user, $validated);
 
         Cache::forget('admin_dashboard_metrics');
 
@@ -162,7 +153,7 @@ class AdminUserController extends Controller
             }
         }
 
-        if ($user->city_id && $this->userCategoryService->resolveCategoryIds($user)->isNotEmpty()) {
+        if ($user->category_id && $user->city_id) {
             try {
                 $this->communityAssignment->autoAssign($user);
                 $this->emailService->sendWelcomeEmail($user->fresh());
@@ -177,7 +168,7 @@ class AdminUserController extends Controller
             'message' => $adminSetPassword
                 ? 'User added successfully.'
                 : 'User added. A password setup link was sent to their email.',
-            'data' => $this->formatUser($user->fresh(['role', 'roles', 'category', 'categories', 'country', 'state', 'city'])),
+            'data' => $this->formatUser($user->fresh(['role', 'roles', 'category', 'country', 'state', 'city'])),
         ], 201);
     }
 
@@ -198,8 +189,6 @@ class AdminUserController extends Controller
             'role_ids' => 'nullable|array',
             'role_ids.*' => 'uuid|exists:roles,id',
             'category_id' => 'nullable|uuid|exists:categories,id',
-            'category_ids' => ['sometimes', 'array', new ActiveUserCategories(0, UserCategoryService::MAX_CATEGORIES)],
-            'category_ids.*' => 'uuid|exists:categories,id',
             'country_id' => 'nullable|exists:countries,id',
             'state_id' => 'nullable|exists:regions,id',
             'region_id' => 'nullable|exists:regions,id',
@@ -235,7 +224,7 @@ class AdminUserController extends Controller
         }
 
         $roleIds = $validated['role_ids'] ?? null;
-        unset($validated['role_ids'], $validated['category_ids']);
+        unset($validated['role_ids']);
 
         if ($roleIds !== null) {
             $validated['role_id'] = $roleIds[0] ?? $validated['role_id'] ?? $user->role_id;
@@ -249,8 +238,6 @@ class AdminUserController extends Controller
 
         $user->update(array_filter($validated, fn ($value) => !is_null($value)));
 
-        $this->syncUserCategories($user, $validated);
-
         if ($roleIds !== null) {
             $this->syncUserRoles($user, $roleIds);
         }
@@ -259,30 +246,8 @@ class AdminUserController extends Controller
             'status' => 'success',
             'success' => true,
             'message' => 'User profile updated successfully.',
-            'data' => $this->formatUser($user->fresh(['role', 'roles', 'category', 'categories', 'country', 'state', 'city'])),
+            'data' => $this->formatUser($user->fresh(['role', 'roles', 'category', 'country', 'state', 'city'])),
         ]);
-    }
-
-    private function syncUserCategories(User $user, array $validated): void
-    {
-        if (!empty($validated['category_ids']) && is_array($validated['category_ids'])) {
-            $this->userCategoryService->sync($user, $validated['category_ids']);
-
-            return;
-        }
-
-        if (!empty($validated['category_id'])) {
-            $this->userCategoryService->sync($user, [$validated['category_id']]);
-        }
-    }
-
-    private function resolvePrimaryCategoryId(array $validated): ?string
-    {
-        if (!empty($validated['category_ids'][0])) {
-            return $validated['category_ids'][0];
-        }
-
-        return $validated['category_id'] ?? null;
     }
 
     public function bulkAction(Request $request): JsonResponse
@@ -355,9 +320,6 @@ class AdminUserController extends Controller
         $data = $user->toArray();
         $data['role_ids'] = $user->roles->pluck('id')->values()->all();
         $data['role_names'] = $user->roles->pluck('name')->values()->all();
-        $data['category_ids'] = $user->relationLoaded('categories')
-            ? $user->categories->pluck('id')->values()->all()
-            : [];
 
         return $data;
     }

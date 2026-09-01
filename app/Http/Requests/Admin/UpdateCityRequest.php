@@ -18,6 +18,7 @@ class UpdateCityRequest extends FormRequest
     {
         $regionId = $this->input('region_id');
         $status = $this->input('status');
+        $groupId = $this->input('whatsapp_group_id');
 
         $merged = [];
 
@@ -29,6 +30,10 @@ class UpdateCityRequest extends FormRequest
             $merged['status'] = strtolower((string) $status['value']);
         } elseif (is_string($status)) {
             $merged['status'] = strtolower($status);
+        }
+
+        if ($groupId === '' || $groupId === 'null' || $groupId === 'undefined') {
+            $merged['whatsapp_group_id'] = null;
         }
 
         if ($this->has('name') && is_string($this->input('name'))) {
@@ -59,6 +64,7 @@ class UpdateCityRequest extends FormRequest
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['required', Rule::enum(Status::class)],
+            'whatsapp_group_id' => ['nullable', 'uuid', 'exists:whatsapp_groups,id'],
         ];
     }
 }

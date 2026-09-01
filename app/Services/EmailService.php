@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\EmailTemplate;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
-use Illuminate\Support\Facades\Log;
 
 class EmailService
 {
@@ -16,24 +15,14 @@ class EmailService
 
     public function sendWelcomeEmail(User $user): bool
     {
-        $user->loadMissing(['country', 'region', 'city', 'category', 'categories', 'role', 'whatsappGroups']);
+        $user->loadMissing(['country', 'region', 'city', 'category', 'role']);
 
-        $sent = $this->mailDispatcher->sendTemplate(
+        return $this->mailDispatcher->sendTemplate(
             EmailTemplate::SLUG_WELCOME,
             $user->email,
             $this->buildWelcomeVariables($user),
-            queue: false,
+            queue: true,
         );
-
-        if (!$sent) {
-            Log::warning('Welcome email failed to send.', [
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'error' => $this->mailDispatcher->getLastError(),
-            ]);
-        }
-
-        return $sent;
     }
 
     public function sendOtpEmail(string $email, string $code, ?string $name = null): bool
@@ -66,10 +55,15 @@ class EmailService
 
     public function buildWelcomeVariables(User $user): array
     {
-        $user->loadMissing(['country', 'region', 'city', 'category', 'categories', 'role', 'whatsappGroups']);
+        $user->loadMissing(['country', 'region', 'city', 'category', 'role', 'whatsappGroups']);
 
-        $assignedGroups = $this->communityAssignment->welcomeCommunityGroups($user)
-            ->map(fn (WhatsAppGroup $group) => $this->formatGroupForEmail($group->loadMissing('category')));
+        $assignedGroup = $this->communityAssignment->welcomeCommunityGroup($user);
+        if ($assignedGroup) {
+            $assignedGroup->loadMissing('category');
+        }
+        $groups = $assignedGroup
+            ? collect([$this->formatGroupForEmail($assignedGroup)])
+            : collect();
 
         $locationLine = collect([
             $user->city?->name,
@@ -77,21 +71,18 @@ class EmailService
             $user->country?->name,
         ])->filter()->implode(', ');
 
-        $categoryNames = $user->categories->pluck('name')
-            ->whenEmpty(fn ($names) => $user->category?->name ? collect([$user->category->name]) : $names)
-            ->implode(', ');
-
-        $primaryGroup = $assignedGroups->first();
+        $categoryName = $assignedGroup?->category?->name
+            ?? $user->category?->name;
 
         return [
             'name' => $user->name,
             'email' => $user->email,
-            'category' => $categoryNames ?: 'General',
+            'category' => $categoryName ?? 'General',
             'location' => $locationLine ?: 'Not specified',
             'login_url' => url('/login'),
-            'group_name' => $primaryGroup['name'] ?? '',
-            'group_url' => $primaryGroup['whatsapp_url'] ?? '',
-            'groups_html' => $this->buildWelcomeGroupsHtml($assignedGroups, $locationLine, $categoryNames),
+            'group_name' => $assignedGroup?->name ?? '',
+            'group_url' => $assignedGroup?->whatsapp_url ?? '',
+            'groups_html' => $this->buildWelcomeGroupsHtml($groups, $locationLine, $categoryName),
         ];
     }
 
@@ -106,35 +97,30 @@ class EmailService
     private function buildWelcomeGroupsHtml($groups, string $locationLine, ?string $categoryName = null): string
     {
         if ($groups->isEmpty()) {
-            return "<p style='font-size: 14px; color: #475569; margin-top: 16px;'>No WhatsApp community group is available for your selected categories yet. We will notify you when a group opens.</p>";
+            return "<p style='font-size: 14px; color: #475569; margin-top: 16px;'>No WhatsApp community group is available for your district yet. We will notify you when a group opens.</p>";
         }
 
-        $categoryLine = $categoryName
-            ? "<p style='margin: 0 0 12px;'><strong>Categories:</strong> " . e($categoryName) . "</p>"
+        $group = $groups->first();
+        $url = e(is_array($group) ? ($group['whatsapp_url'] ?? '') : ($group->whatsapp_url ?? ''));
+        $name = e(is_array($group) ? ($group['name'] ?? 'WhatsApp Group') : ($group->name ?? 'WhatsApp Group'));
+        $button = $url
+            ? "<a href='{$url}' style='background: #25D366; color: #ffffff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;'>Join WhatsApp Group</a>"
             : '';
 
-        $rows = $groups->map(function ($group) {
-            $url = e(is_array($group) ? ($group['whatsapp_url'] ?? '') : ($group->whatsapp_url ?? ''));
-            $name = e(is_array($group) ? ($group['name'] ?? 'WhatsApp Group') : ($group->name ?? 'WhatsApp Group'));
-            $button = $url
-                ? "<a href='{$url}' style='background: #25D366; color: #ffffff; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;'>Join WhatsApp Group</a>"
-                : '';
-
-            return "
-                <tr>
-                    <td style='color: #0F382C; font-size: 16px; font-weight: bold; vertical-align: middle; padding-top: 8px;'>{$name}</td>
-                    <td align='right' style='vertical-align: middle; white-space: nowrap; padding-top: 8px;'>{$button}</td>
-                </tr>
-            ";
-        })->implode('');
+        $categoryLine = $categoryName
+            ? "<p style='margin: 0 0 12px;'><strong>Category:</strong> " . e($categoryName) . "</p>"
+            : '';
 
         return "
             <div style='background: #f0fdf4; color: #166534; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0;'>
-                <h3 style='margin: 0 0 10px 0;'>Your WhatsApp community group" . ($groups->count() > 1 ? 's' : '') . "</h3>
+                <h3 style='margin: 0 0 10px 0;'>Your WhatsApp community group</h3>
                 <p style='margin: 0 0 6px;'><strong>Location:</strong> " . e($locationLine) . "</p>
                 {$categoryLine}
                 <table role='presentation' width='100%' cellpadding='0' cellspacing='0' border='0'>
-                    {$rows}
+                    <tr>
+                        <td style='color: #0F382C; font-size: 16px; font-weight: bold; vertical-align: middle; padding-top: 4px;'>{$name}</td>
+                        <td align='right' style='vertical-align: middle; white-space: nowrap; padding-top: 4px;'>{$button}</td>
+                    </tr>
                 </table>
             </div>
         ";
