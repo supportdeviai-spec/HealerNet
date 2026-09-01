@@ -26,5 +26,5 @@ fi
 echo ""
 echo "Deploy complete. Health check:"
 "${COMPOSE[@]}" exec -T app php artisan --version
-curl -fsS "https://healernet.org/api/health" || curl -fsS "http://127.0.0.1/api/health" || true
+curl -fsS "https://thehealernet.in/api/health" || curl -fsS "http://127.0.0.1/api/health" || true
 echo ""

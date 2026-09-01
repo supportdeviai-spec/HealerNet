@@ -5,16 +5,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 COMPOSE=(docker compose -f docker-compose.prod.yml)
-DOMAIN="${APP_DOMAIN:-healernet.org}"
-EMAIL="${SSL_EMAIL:-support@healernet.org}"
+DOMAIN="${APP_DOMAIN:-thehealernet.in}"
+EMAIL="${SSL_EMAIL:-support@thehealernet.in}"
 
 if [[ -f .env ]]; then
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
-  DOMAIN="${APP_DOMAIN:-$(echo "${APP_URL:-https://healernet.org}" | sed -E 's#https?://##;s#/.*##')}"
-  EMAIL="${SSL_EMAIL:-${MAIL_FROM_ADDRESS:-support@healernet.org}}"
+  DOMAIN="${APP_DOMAIN:-$(echo "${APP_URL:-https://thehealernet.in}" | sed -E 's#https?://##;s#/.*##')}"
+  EMAIL="${SSL_EMAIL:-${MAIL_FROM_ADDRESS:-support@thehealernet.in}}"
 fi
 
 CERT_DIR="$ROOT/docker/certbot/conf/live/${DOMAIN}"

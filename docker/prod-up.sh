@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 COMPOSE=(docker compose -f docker-compose.prod.yml)
-DOMAIN="${APP_DOMAIN:-healernet.org}"
+DOMAIN="${APP_DOMAIN:-thehealernet.in}"
 CERT_DIR="$ROOT/docker/certbot/conf/live/${DOMAIN}"
 
 if [[ ! -f .env ]]; then
@@ -52,6 +52,6 @@ echo "Issue a real SSL certificate after DNS A records point here:"
 echo "  ./docker/issue-ssl.sh"
 echo ""
 echo "Default admin after first seed:"
-echo "  Email:    admin@healernet.org"
+echo "  Email:    admin@thehealernet.in"
 echo "  Password: Admin@123"
 echo "  Change this password immediately."
