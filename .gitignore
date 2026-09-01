@@ -49,3 +49,4 @@ Homestead.yaml
 Thumbs.db
 public/banner/uploads/
 storage/app/public/banners/
+storage/app/private/
