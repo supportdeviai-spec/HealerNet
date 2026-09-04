@@ -1872,7 +1872,6 @@ function UserRow({ t, u, checked, onCheck, onEdit, onDelete, onSuspend, onActiva
         {open && (
           <div className="absolute right-4 top-9 z-20 w-48 rounded-xl shadow-xl border overflow-hidden text-sm" style={{ background: t.surface, borderColor: t.border }}>
             <MenuItem t={t} icon={Pencil} label="Edit user" onClick={() => { onEdit(); setOpen(false); }} disabled={!canEdit} />
-            {!u.email_verified_at && !u.emailVerified && <MenuItem t={t} icon={BadgeCheck} label="Verify email" onClick={() => { onVerify(); setOpen(false); }} />}
             {canEdit && (rawStatus === "active"
               ? <MenuItem t={t} icon={UserX} label="Inactive" onClick={() => { onSuspend(); setOpen(false); }} />
               : <MenuItem t={t} icon={UserCheck} label="Activate" onClick={() => { onActivate(); setOpen(false); }} />)}

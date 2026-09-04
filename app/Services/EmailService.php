@@ -71,8 +71,8 @@ class EmailService
             $user->country?->name,
         ])->filter()->implode(', ');
 
-        $categoryName = $assignedGroup?->category?->name
-            ?? $user->category?->name;
+        $categoryName = $user->category?->name
+            ?? $assignedGroup?->category?->name;
 
         return [
             'name' => $user->name,
