@@ -93,6 +93,10 @@ class CommunityAssignmentService
             ->whereIn('id', $mappings->pluck('whatsapp_group_id'))
             ->whereIn('status', ['active', 'full']);
 
+        if ($user->category_id) {
+            $groupQuery->where('category_id', $user->category_id);
+        }
+
         if ($forAssignment) {
             $groupQuery->lockForUpdate();
         }
