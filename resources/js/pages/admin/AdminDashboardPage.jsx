@@ -573,7 +573,7 @@ function Pagination({ t, page, totalPages, onPage, total, pageSize }) {
 function Th({ t, label, sortKey, sort, onSort, className }) {
   const active = sort?.key === sortKey;
   return (
-    <th className={cx("text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide select-none", sortKey && "cursor-pointer", className)}
+    <th className={cx("text-left px-4 py-3 text-xs font-semibold uppercase tracking-wide select-none whitespace-nowrap", sortKey && "cursor-pointer", className)}
       style={{ color: t.textFaint }} onClick={() => sortKey && onSort(sortKey)}>
       <span className="inline-flex items-center gap-1">{label}{sortKey && <ArrowUpDown size={11} style={{ opacity: active ? 1 : 0.4, color: active ? BRAND.primary : t.textFaint }} />}</span>
     </th>
@@ -582,7 +582,7 @@ function Th({ t, label, sortKey, sort, onSort, className }) {
 
 function ActionsTh({ t }) {
   return (
-    <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wide w-16" style={{ color: t.textFaint }}>
+    <th className="text-right px-4 py-3 text-xs font-semibold uppercase tracking-wide w-16 whitespace-nowrap" style={{ color: t.textFaint }}>
       Actions
     </th>
   );
@@ -1199,6 +1199,16 @@ const Header = memo(function Header({ t, dark, setDark, sidebarOpen, isDesktop, 
   );
 });
 
+const formatDob = (val) => {
+  if (!val) return "-";
+  const str = String(val).slice(0, 10);
+  const parts = str.split("-");
+  if (parts.length === 3 && parts[0].length === 4) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return str || "-";
+};
+
 /* =========================================================================
    DASHBOARD PAGE
    ========================================================================= */
@@ -1260,9 +1270,12 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
     if (!Array.isArray(recentUsers) || recentUsers.length === 0) return [];
     return recentUsers.map((u) => ({
       id: u.id,
-      name: u.name || u.full_name || "N/A",
+      name: [u.title, u.name || u.full_name].filter(Boolean).join(" ").trim() || "N/A",
+      raw_name: u.name || u.full_name || "N/A",
+      business_name: u.business_name || "-",
       email: u.email || "N/A",
       mobile: u.mobile || u.mobile_number || u.phone || "-",
+      dob: formatDob(u.date_of_birth || u.profile?.date_of_birth),
       category: u.category?.name || (typeof u.category === "string" ? u.category : "-") || "-",
       country: u.country?.name || (typeof u.country === "string" ? u.country : "-") || "-",
       state: u.state?.name || (typeof u.state === "string" ? u.state : "-") || "-",
@@ -1273,7 +1286,7 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
   }, [recentUsers]);
 
   const table = useTableState(recentUsersData, {
-    searchKeys: ["name", "email", "mobile", "category", "city", "country", "state"],
+    searchKeys: ["name", "business_name", "email", "mobile", "category", "city", "country", "state"],
     initialSort: { key: "registered", dir: "desc" },
     pageSize: 8,
   });
@@ -1392,12 +1405,14 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
           </div>
           <TableToolbar t={t} query={table.query} setQuery={table.setQuery} placeholder="Search recent registrations…" />
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[1350px]">
               <thead><tr>
                 <Th t={t} label="Profile" />
                 <Th t={t} label="Full Name" sortKey="name" sort={table.sort} onSort={table.onSort} />
+                <Th t={t} label="Business Name" sortKey="business_name" sort={table.sort} onSort={table.onSort} />
                 <Th t={t} label="Email" sortKey="email" sort={table.sort} onSort={table.onSort} />
                 <Th t={t} label="Mobile Number" />
+                <Th t={t} label="Date of Birth" />
                 <Th t={t} label="Category" sortKey="category" sort={table.sort} onSort={table.onSort} />
                 <Th t={t} label="Country" />
                 <Th t={t} label="State" />
@@ -1408,16 +1423,18 @@ function DashboardPage({ t, dark, toast, onNav, canAccessSection }) {
               <tbody>
                 {table.pageRows.map((u) => (
                   <tr key={u.id} className="border-t hover:bg-black/[0.02]" style={{ borderColor: t.border }}>
-                    <td className="px-4 py-3"><Avatar name={u.name} size={32} /></td>
-                    <td className="px-4 py-3 text-sm font-semibold" style={{ color: t.text }}>{u.name}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted }}>{u.email}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.mobile}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted }}>{u.category}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted }}>{u.country}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted }}>{u.state}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted }}>{u.city}</td>
-                    <td className="px-4 py-3 text-sm" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.registered}</td>
-                    <td className="px-4 py-3"><StatusBadge t={t} status={u.status} /></td>
+                    <td className="px-4 py-3 whitespace-nowrap"><Avatar name={u.raw_name || u.name} size={32} /></td>
+                    <td className="px-4 py-3 text-sm font-semibold whitespace-nowrap" style={{ color: t.text }}>{u.name}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.business_name}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.email}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.mobile}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.dob}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.category}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.country}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.state}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.city}</td>
+                    <td className="px-4 py-3 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.registered}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><StatusBadge t={t} status={u.status} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -1647,8 +1664,10 @@ function UsersPage({ t, toast }) {
     const columns = [
       { key: "id", label: "User ID" },
       { key: "name", label: "Full Name" },
+      { key: "business_name", label: "Business Name" },
       { key: "email", label: "Email Address" },
       { key: "mobile", label: "Mobile Number" },
+      { key: "dob", label: "Date of Birth" },
       { key: "category", label: "Category" },
       { key: "country", label: "Country" },
       { key: "state", label: "State" },
@@ -1658,8 +1677,10 @@ function UsersPage({ t, toast }) {
     ];
     const exportData = users.map((u) => ({
       ...u,
-      name: u.name || u.full_name,
+      name: [u.title, u.name || u.full_name].filter(Boolean).join(" ").trim(),
+      business_name: u.business_name || "-",
       mobile: u.mobile || u.mobile_number || u.phone || "-",
+      dob: formatDob(u.date_of_birth || u.profile?.date_of_birth),
       category: u.category?.name || u.category || "-",
       country: u.country?.name || (typeof u.country === "string" ? u.country : "-"),
       state: u.state?.name || (typeof u.state === "string" ? u.state : "-"),
@@ -1738,10 +1759,10 @@ function UsersPage({ t, toast }) {
         )}
 
         <div className="overflow-x-auto" style={refreshTableStyle(refreshing)}>
-          <table className="w-full">
+          <table className="w-full min-w-[1350px]">
             <thead>
               <tr>
-                <th className="px-4 py-3 w-8">
+                <th className="px-4 py-3 w-8 whitespace-nowrap">
                   <input
                     type="checkbox"
                     checked={users.length > 0 && users.every((r) => selected.has(String(r.id)))}
@@ -1750,8 +1771,10 @@ function UsersPage({ t, toast }) {
                 </th>
                 <Th t={t} label="Profile" />
                 <Th t={t} label="Full Name" sortKey="name" sort={sort} onSort={onSort} />
+                <Th t={t} label="Business Name" sortKey="business_name" sort={sort} onSort={onSort} />
                 <Th t={t} label="Email" sortKey="email" sort={sort} onSort={onSort} />
                 <Th t={t} label="Mobile Number" />
+                <Th t={t} label="Date of Birth" />
                 <Th t={t} label="Category" sortKey="category_id" sort={sort} onSort={onSort} />
                 <Th t={t} label="Country" />
                 <Th t={t} label="State" />
@@ -1765,7 +1788,7 @@ function UsersPage({ t, toast }) {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t" style={{ borderColor: t.border }}>
-                    <td colSpan={12} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
+                    <td colSpan={14} className="px-4 py-3"><Skeleton className="h-8 w-full" /></td>
                   </tr>
                 ))
               ) : users.length > 0 ? (
@@ -1849,25 +1872,31 @@ function UserRow({ t, u, checked, onCheck, onEdit, onDelete, onSuspend, onActiva
     ? new Date(u.registered_at).toISOString().slice(0, 10)
     : (u.created_at ? new Date(u.created_at).toISOString().slice(0, 10) : (u.registered || "-"));
 
+  const dob = formatDob(u.date_of_birth || u.profile?.date_of_birth);
+
   const rawStatus = (u.status || "active").toLowerCase();
   const displayStatus = rawStatus === "suspended" ? "inactive" : rawStatus;
 
+  const displayName = [u.title, u.name || u.full_name].filter(Boolean).join(" ").trim();
+
   return (
     <tr className="border-t hover:bg-black/[0.015]" style={{ borderColor: t.border }}>
-      <td className="px-4 py-2.5"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
-      <td className="px-4 py-2.5"><Avatar name={u.name || u.full_name} size={30} /></td>
-      <td className="px-4 py-2.5 text-sm font-medium" style={{ color: t.text }}>{u.name || u.full_name}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>
+      <td className="px-4 py-2.5 whitespace-nowrap"><input type="checkbox" checked={checked} onChange={onCheck} /></td>
+      <td className="px-4 py-2.5 whitespace-nowrap"><Avatar name={u.name || u.full_name} size={30} /></td>
+      <td className="px-4 py-2.5 text-sm font-medium whitespace-nowrap" style={{ color: t.text }}>{displayName}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.business_name || "-"}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>
         <span className="inline-flex items-center gap-1.5">{u.email}{(u.emailVerified || u.email_verified_at) && <BadgeCheck size={13} style={{ color: BRAND.ok }} />}</span>
       </td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.mobile || u.mobile_number || u.phone || "-"}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{u.category?.name || u.category || "-"}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{u.country?.name || (typeof u.country === "string" ? u.country : "-")}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{u.state?.name || (typeof u.state === "string" ? u.state : "-")}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted }}>{u.city?.name || (typeof u.city === "string" ? u.city : "-")}</td>
-      <td className="px-4 py-2.5 text-sm" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{registeredDate}</td>
-      <td className="px-4 py-2.5"><StatusBadge t={t} status={displayStatus} /></td>
-      <td className="px-4 py-2.5 relative text-right" ref={ref}>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{u.mobile || u.mobile_number || u.phone || "-"}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{dob}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.category?.name || u.category || "-"}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.country?.name || (typeof u.country === "string" ? u.country : "-")}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.state?.name || (typeof u.state === "string" ? u.state : "-")}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted }}>{u.city?.name || (typeof u.city === "string" ? u.city : "-")}</td>
+      <td className="px-4 py-2.5 text-sm whitespace-nowrap" style={{ color: t.textMuted, fontFamily: FONT_MONO, fontSize: 12.5 }}>{registeredDate}</td>
+      <td className="px-4 py-2.5 whitespace-nowrap"><StatusBadge t={t} status={displayStatus} /></td>
+      <td className="px-4 py-2.5 relative text-right whitespace-nowrap" ref={ref}>
         <button type="button" onClick={() => setOpen((v) => !v)} className="p-1.5 rounded-lg hover:bg-black/5" style={{ color: t.textMuted }}><MoreVertical size={16} /></button>
         {open && (
           <div className="absolute right-4 top-9 z-20 w-48 rounded-xl shadow-xl border overflow-hidden text-sm" style={{ background: t.surface, borderColor: t.border }}>
@@ -4022,11 +4051,11 @@ export default function App({ currentView }) {
         @keyframes hn-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         table { border-collapse: collapse; }
       `}</style>
-        <Sidebar sections={navSections} active={section} onNav={nav} open={sidebarOpen} setOpen={setSidebarOpen} isDesktop={isDesktop} dark={dark} onLogout={logout} />
-        <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
-          <Header t={t} dark={dark} setDark={setDark} sidebarOpen={sidebarOpen} isDesktop={isDesktop} onMenu={() => setSidebarOpen(true)} section={section}
-            notifOpen={notifOpen} setNotifOpen={setNotifOpen} profileOpen={profileOpen} setProfileOpen={setProfileOpen} onLogout={logout} user={user} onNav={nav} canAccessSection={canAccessSection} />
-          <div className="flex-1 min-h-0 overflow-y-auto">
+      <Sidebar sections={navSections} active={section} onNav={nav} open={sidebarOpen} setOpen={setSidebarOpen} isDesktop={isDesktop} dark={dark} onLogout={logout} />
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <Header t={t} dark={dark} setDark={setDark} sidebarOpen={sidebarOpen} isDesktop={isDesktop} onMenu={() => setSidebarOpen(true)} section={section}
+          notifOpen={notifOpen} setNotifOpen={setNotifOpen} profileOpen={profileOpen} setProfileOpen={setProfileOpen} onLogout={logout} user={user} onNav={nav} canAccessSection={canAccessSection} />
+        <div className="flex-1 min-h-0 overflow-y-auto">
           <main className="p-4 sm:p-6 max-w-[1400px] w-full mx-auto">
             <div className="mb-4 text-xs md:hidden" style={{ color: t.textFaint }}>Admin / {LABELS[section] || "Panel"}</div>
             {!hasAnySectionAccess && (
@@ -4114,11 +4143,11 @@ export default function App({ currentView }) {
               </div>
             )}
           </main>
-          </div>
-          <footer className="shrink-0 px-6 py-3.5 text-xs text-center" style={{ color: t.textFaint, background: t.bg, borderTop: `1px solid ${t.border}` }}>
-            HealerNet Admin Console · Global Network for Evidence-Based Healing · v1.0
-          </footer>
         </div>
+        <footer className="shrink-0 px-6 py-3.5 text-xs text-center" style={{ color: t.textFaint, background: t.bg, borderTop: `1px solid ${t.border}` }}>
+          HealerNet Admin Console · Global Network for Evidence-Based Healing · v1.0
+        </footer>
+      </div>
       <ToastHost toasts={toasts} remove={removeToast} />
     </div>
   );
