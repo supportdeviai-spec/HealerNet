@@ -31,12 +31,13 @@ class AdminUserController extends Controller
             return $response;
         }
 
-        $users = User::with(['role', 'roles', 'category', 'country', 'state', 'city'])
+        $users = User::with(['role', 'roles', 'category', 'country', 'state', 'city', 'profile'])
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%")
-                      ->orWhere('mobile', 'like', "%{$search}%");
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('mobile', 'like', "%{$search}%")
+                        ->orWhere('business_name', 'like', "%{$search}%");
                 });
             })
             ->when($request->status && $request->status !== 'All', function ($query) use ($request) {
@@ -50,14 +51,14 @@ class AdminUserController extends Controller
             })
             ->when($request->role_slug, function ($query, $role_slug) {
                 $query->where(function ($q) use ($role_slug) {
-                    $q->whereHas('role', fn ($r) => $r->where('slug', $role_slug))
-                        ->orWhereHas('roles', fn ($r) => $r->where('slug', $role_slug));
+                    $q->whereHas('role', fn($r) => $r->where('slug', $role_slug))
+                        ->orWhereHas('roles', fn($r) => $r->where('slug', $role_slug));
                 });
             })
             ->orderBy($request->sort_by ?? 'created_at', $request->order ?? 'desc')
             ->paginate((int) $request->get('limit', 10));
 
-        $users->getCollection()->transform(fn (User $user) => $this->formatUser($user));
+        $users->getCollection()->transform(fn(User $user) => $this->formatUser($user));
 
         return response()->json([
             'status' => 'success',
@@ -236,7 +237,7 @@ class AdminUserController extends Controller
             $validated['status'] = $this->normalizeUserStatus($validated['status']);
         }
 
-        $user->update(array_filter($validated, fn ($value) => !is_null($value)));
+        $user->update(array_filter($validated, fn($value) => !is_null($value)));
 
         if ($roleIds !== null) {
             $this->syncUserRoles($user, $roleIds);
@@ -320,6 +321,11 @@ class AdminUserController extends Controller
         $data = $user->toArray();
         $data['role_ids'] = $user->roles->pluck('id')->values()->all();
         $data['role_names'] = $user->roles->pluck('name')->values()->all();
+        $data['date_of_birth'] = $user->profile?->date_of_birth
+            ? (is_string($user->profile->date_of_birth)
+                ? substr($user->profile->date_of_birth, 0, 10)
+                : $user->profile->date_of_birth->format('Y-m-d'))
+            : null;
 
         return $data;
     }
