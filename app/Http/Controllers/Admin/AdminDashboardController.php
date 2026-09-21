@@ -40,7 +40,7 @@ class AdminDashboardController extends Controller
             'total_countries' => Country::where('status', 'active')->count(),
             'total_categories' => Category::count(),
 
-            'recent_users' => User::with(['role', 'category', 'country', 'state', 'city'])
+            'recent_users' => User::with(['role', 'category', 'country', 'state', 'city', 'profile'])
                 ->orderBy('created_at', 'desc')
                 ->take(8)
                 ->get(),
