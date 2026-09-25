@@ -20,7 +20,7 @@ class LocationController extends Controller
     public function countries(): JsonResponse
     {
         $countries = Country::active()
-            ->select('id', 'name', 'code', 'phone_code')
+            ->select('id', 'name', 'code', 'phone_code', 'mobile_min_length', 'mobile_max_length', 'mobile_starts_with', 'region_label', 'city_label')
             ->orderBy('name')
             ->get();
 

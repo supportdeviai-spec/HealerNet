@@ -331,8 +331,8 @@ export default function WhatsAppCommunityImportModal({ t, toast, open, onClose, 
       {!preview && !result && !processing && (
         <>
           <p className="text-sm mb-3" style={{ color: t.textMuted }}>
-            Upload one Excel file with columns: Country, State, District, WhatsApp Group Name, WhatsApp Group Link, Status, Description.
-            Description and Status are optional. Existing values are never overwritten by blank cells.
+            Upload one Excel file with columns: Country, Phone Code, Mobile Length, Starts With, Region Label, City Label, State, District, WhatsApp Group Name, WhatsApp Group Link, Status, Description.
+            Phone Code is required for a new country (e.g. +971). Mobile Length (e.g. 9 or 10-11), Starts With (e.g. 5 or 6,7,8,9), Region Label / City Label (what the country calls them, e.g. Emirate / City / Area), Description and Status are optional. Existing values are never overwritten by blank cells.
           </p>
           <input
             ref={inputRef}

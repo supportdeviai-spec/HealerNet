@@ -1,4 +1,5 @@
 import { Select } from '../admin/AdminShared';
+import SearchableSelect from '../common/SearchableSelect';
 
 export default function RegionSelect({
   value,
@@ -7,6 +8,7 @@ export default function RegionSelect({
   loading = false,
   disabled = false,
   label = '',
+  labelClassName = 'block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5',
   placeholder = 'Select State',
   className = '',
   id = 'region-select',
@@ -17,7 +19,7 @@ export default function RegionSelect({
   return (
     <div className={className}>
       {label ? (
-        <label htmlFor={id} className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+        <label htmlFor={id} className={labelClassName}>
           {label}
         </label>
       ) : null}
@@ -36,22 +38,17 @@ export default function RegionSelect({
           ))}
         </Select>
       ) : (
-        <select
+        <SearchableSelect
           id={id}
           value={value || ''}
           onChange={onChange}
           disabled={disabled || loading}
-          required
           className={selectClassName}
           style={selectStyle}
-        >
-          <option value="">{loading ? 'Loading states…' : placeholder}</option>
-          {regions.map((region) => (
-            <option key={region.id} value={region.id}>
-              {region.name}
-            </option>
-          ))}
-        </select>
+          placeholder={loading ? 'Loading states…' : placeholder}
+          searchPlaceholder={label ? `Search ${label.toLowerCase()}…` : 'Search…'}
+          options={regions.map((region) => ({ value: region.id, label: region.name }))}
+        />
       )}
     </div>
   );

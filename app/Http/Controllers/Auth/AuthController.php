@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Events\UserRegistered;
 use App\Models\CommunityGroup;
+use App\Models\Country;
 use App\Models\User;
 use App\Models\Role;
 use App\Models\OtpCode;
@@ -75,6 +76,52 @@ class AuthController extends Controller
         ], 401);
     }
 
+    /**
+     * Checks the mobile against the selected country's Phone Code / Mobile Length / Starts With.
+     * Countries without mobile rules are left to the existing checks.
+     */
+    private function mobileMatchesCountryRule(Request $request): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($request) {
+            $countryId = $request->input('country_id');
+            $country = is_numeric($countryId) ? Country::find((int) $countryId) : null;
+            if (! $country || ! is_string($value)) {
+                return;
+            }
+
+            $hasLength = $country->mobile_min_length && $country->mobile_max_length;
+            $startsWith = array_filter(explode(',', (string) $country->mobile_starts_with));
+            $code = preg_replace('/\D/', '', (string) $country->phone_code);
+            if ($code === '' || (! $hasLength && $startsWith === [])) {
+                return;
+            }
+
+            $digits = preg_replace('/\D/', '', $value);
+            if (! str_starts_with($digits, $code)) {
+                $fail("The mobile number must start with +{$code} for {$country->name}.");
+
+                return;
+            }
+
+            $national = substr($digits, strlen($code));
+            if ($hasLength) {
+                $min = $country->mobile_min_length;
+                $max = $country->mobile_max_length;
+                if (strlen($national) < $min || strlen($national) > $max) {
+                    $fail($min === $max
+                        ? "The mobile number must be {$min} digits for {$country->name}."
+                        : "The mobile number must be {$min} to {$max} digits for {$country->name}.");
+
+                    return;
+                }
+            }
+
+            if ($startsWith !== [] && ! collect($startsWith)->contains(fn ($prefix) => str_starts_with($national, $prefix))) {
+                $fail('The mobile number must start with '.implode(', ', $startsWith)." for {$country->name}.");
+            }
+        };
+    }
+
     public function register(Request $request): JsonResponse
     {
         $validated = $request->validate(
@@ -86,7 +133,7 @@ class AuthController extends Controller
                 'date_of_birth' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:today', 'after_or_equal:1900-01-01'],
                 'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
                 'password' => ['nullable', 'string', 'min:8'],
-                'mobile' => ['required', 'string', User::uniqueMobileRule()],
+                'mobile' => ['required', 'string', User::uniqueMobileRule(), $this->mobileMatchesCountryRule($request)],
                 'category_id' => ['required', 'uuid', 'exists:categories,id'],
                 'country_id' => ['required', 'integer', 'exists:countries,id'],
                 'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],

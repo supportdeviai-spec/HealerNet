@@ -9,6 +9,18 @@ import CitySelect from './CitySelect';
 const ADMIN_SELECT_CLASS =
   'location-admin-select w-full px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer disabled:cursor-not-allowed';
 
+const DEFAULT_REGION_LABEL = 'State/Province';
+const DEFAULT_CITY_LABEL = 'District';
+
+// What a country calls its region / city level (set via Excel import or admin panel),
+// e.g. UAE → "Emirate" / "City / Area". Falls back to State/Province and District.
+export function getLocationLabels(country) {
+  return {
+    region: String(country?.region_label || '').trim() || DEFAULT_REGION_LABEL,
+    city: String(country?.city_label || '').trim() || DEFAULT_CITY_LABEL,
+  };
+}
+
 export default function LocationPicker({
   countryId,
   regionId,
@@ -21,6 +33,7 @@ export default function LocationPicker({
   selectStyle,
   variant = 'auth',
   showLabels = true,
+  labelClassName,
   cityPlaceholder,
   cityLoadingPlaceholder,
   t,
@@ -29,10 +42,17 @@ export default function LocationPicker({
   const { regions, loading: loadingRegions } = useRegions(countryId);
   const { cities, loading: loadingCities } = useCities(regionId);
 
+  const selectedCountry = variant === 'auth'
+    ? countries.find((c) => String(c.id) === String(countryId))
+    : null;
+  const labels = getLocationLabels(selectedCountry);
+  const hasCustomCityLabel = labels.city !== DEFAULT_CITY_LABEL;
+
   const resolvedSelectClass = selectClassName || (variant === 'admin' ? ADMIN_SELECT_CLASS : undefined);
   const sharedSelectProps = {
     ...(resolvedSelectClass ? { selectClassName: resolvedSelectClass } : {}),
     ...(selectStyle ? { selectStyle } : {}),
+    ...(labelClassName ? { labelClassName } : {}),
     ...(t ? { t } : {}),
   };
 
@@ -57,24 +77,26 @@ export default function LocationPicker({
         {...sharedSelectProps}
       />
       <RegionSelect
-        label={showLabels && variant === 'auth' ? 'State' : ''}
+        label={showLabels && variant === 'auth' ? labels.region : ''}
         value={regionId}
         onChange={(e) => onRegionChange?.(e.target.value)}
         regions={regions}
         loading={loadingRegions}
         disabled={!countryId}
-        placeholder={!countryId ? 'Select country first' : 'Select State'}
+        placeholder={!countryId ? 'Select country first' : (showLabels ? 'Select' : `Select ${labels.region}`)}
         {...sharedSelectProps}
       />
       <CitySelect
-        label={showLabels && variant === 'auth' ? 'District' : ''}
+        label={showLabels && variant === 'auth' ? labels.city : ''}
         value={cityId}
         onChange={(e) => onCityChange?.(e.target.value)}
         cities={cities}
         loading={loadingCities}
         disabled={!regionId}
-        placeholder={!regionId ? 'Select state first' : (cityPlaceholder || 'Select District')}
-        loadingPlaceholder={cityLoadingPlaceholder || 'Loading districts…'}
+        placeholder={!regionId
+          ? (showLabels ? 'Select' : `Select ${labels.region.toLowerCase()} first`)
+          : (cityPlaceholder || (showLabels ? 'Select' : `Select ${labels.city}`))}
+        loadingPlaceholder={cityLoadingPlaceholder || (hasCustomCityLabel ? 'Loading…' : 'Loading districts…')}
         {...sharedSelectProps}
       />
     </div>

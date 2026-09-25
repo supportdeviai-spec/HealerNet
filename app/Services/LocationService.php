@@ -23,7 +23,7 @@ class LocationService
     public function listCountriesForPublic(?string $search = null): Collection
     {
         $query = Country::active()
-            ->select('id', 'name', 'code', 'phone_code')
+            ->select('id', 'name', 'code', 'phone_code', 'mobile_min_length', 'mobile_max_length', 'mobile_starts_with', 'region_label', 'city_label')
             ->orderBy('name');
 
         if ($search) {

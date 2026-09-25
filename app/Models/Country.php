@@ -9,12 +9,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Country extends Model
 {
-    protected $fillable = ['name', 'code', 'phone_code', 'status'];
+    protected $fillable = [
+        'name',
+        'code',
+        'phone_code',
+        'mobile_min_length',
+        'mobile_max_length',
+        'mobile_starts_with',
+        'region_label',
+        'city_label',
+        'status',
+    ];
 
     protected function casts(): array
     {
         return [
             'status' => Status::class,
+            'mobile_min_length' => 'integer',
+            'mobile_max_length' => 'integer',
         ];
     }
 

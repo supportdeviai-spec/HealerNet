@@ -77,6 +77,14 @@ const INITIAL_TAB_UI = {
 
 const selKey = (id) => String(id);
 
+// Stored as mobile_min_length / mobile_max_length; shown and edited as "10" or "10-11".
+const mobileLengthText = (country) => {
+  const min = country?.mobile_min_length;
+  const max = country?.mobile_max_length;
+  if (!min || !max) return '';
+  return min === max ? String(min) : `${min}-${max}`;
+};
+
 const LocationRow = memo(function LocationRow({ t, item, tab, detail, checked, onCheck, onEdit, onToggleStatus, onOpenCommunity, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -805,7 +813,7 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
       return;
     }
     const filters = currentUi.filters;
-    if (tab === 'countries') setForm({ name: '', code: '', phone_code: '', status: 'active' });
+    if (tab === 'countries') setForm({ name: '', code: '', phone_code: '', mobile_length: '', mobile_starts_with: '', region_label: '', city_label: '', status: 'active' });
     if (tab === 'regions') setForm({ country_id: filters.countryId || '', name: '', code: '', type: 'state', status: 'active' });
     if (tab === 'cities') setForm({
       region_id: filters.regionId || '',
@@ -1037,6 +1045,38 @@ export default function LocationManagementPage({ t, toast, onNav, variant = 'loc
               <Field t={t} label="Country Name"><Input style={inputStyle(t)} value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
               <Field t={t} label="Country Code"><Input style={inputStyle(t)} value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="IN, US" /></Field>
               <Field t={t} label="Phone Code"><Input style={inputStyle(t)} value={form.phone_code || ''} onChange={(e) => setForm({ ...form, phone_code: e.target.value })} placeholder="+91" /></Field>
+              <Field t={t} label="Mobile Length">
+                <Input
+                  style={inputStyle(t)}
+                  value={form.mobile_length ?? mobileLengthText(form)}
+                  onChange={(e) => setForm({ ...form, mobile_length: e.target.value })}
+                  placeholder="10 or 10-11"
+                />
+              </Field>
+              <Field t={t} label="Starts With">
+                <Input
+                  style={inputStyle(t)}
+                  value={form.mobile_starts_with || ''}
+                  onChange={(e) => setForm({ ...form, mobile_starts_with: e.target.value })}
+                  placeholder="6,7,8,9"
+                />
+              </Field>
+              <Field t={t} label="Region Label">
+                <Input
+                  style={inputStyle(t)}
+                  value={form.region_label || ''}
+                  onChange={(e) => setForm({ ...form, region_label: e.target.value })}
+                  placeholder="State, Province, Emirate"
+                />
+              </Field>
+              <Field t={t} label="City Label">
+                <Input
+                  style={inputStyle(t)}
+                  value={form.city_label || ''}
+                  onChange={(e) => setForm({ ...form, city_label: e.target.value })}
+                  placeholder="District, City, City / Area"
+                />
+              </Field>
             </>
           )}
 

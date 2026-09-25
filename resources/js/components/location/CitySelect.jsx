@@ -1,4 +1,5 @@
 import { Select } from '../admin/AdminShared';
+import SearchableSelect from '../common/SearchableSelect';
 
 export default function CitySelect({
   value,
@@ -7,6 +8,7 @@ export default function CitySelect({
   loading = false,
   disabled = false,
   label = '',
+  labelClassName = 'block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5',
   placeholder = 'Select District',
   loadingPlaceholder = 'Loading districts…',
   className = '',
@@ -18,7 +20,7 @@ export default function CitySelect({
   return (
     <div className={className}>
       {label ? (
-        <label htmlFor={id} className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+        <label htmlFor={id} className={labelClassName}>
           {label}
         </label>
       ) : null}
@@ -37,22 +39,17 @@ export default function CitySelect({
           ))}
         </Select>
       ) : (
-        <select
+        <SearchableSelect
           id={id}
           value={value || ''}
           onChange={onChange}
           disabled={disabled || loading}
-          required
           className={selectClassName}
           style={selectStyle}
-        >
-          <option value="">{loading ? loadingPlaceholder : placeholder}</option>
-          {cities.map((city) => (
-            <option key={city.id} value={city.id}>
-              {city.name}
-            </option>
-          ))}
-        </select>
+          placeholder={loading ? loadingPlaceholder : placeholder}
+          searchPlaceholder={label ? `Search ${label.toLowerCase()}…` : 'Search…'}
+          options={cities.map((city) => ({ value: city.id, label: city.name }))}
+        />
       )}
     </div>
   );

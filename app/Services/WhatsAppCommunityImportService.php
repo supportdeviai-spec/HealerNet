@@ -12,6 +12,7 @@ use App\Models\Region;
 use App\Models\WhatsAppCommunityImport;
 use App\Models\WhatsAppGroup;
 use App\Support\LocationNameNormalizer;
+use App\Support\MobileRules;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
@@ -21,7 +22,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -45,6 +48,11 @@ class WhatsAppCommunityImportService
      */
     private const HEADER_ALIASES = [
         'country' => ['country'],
+        'phone_code' => ['phone code', 'calling code', 'dial code'],
+        'mobile_length' => ['mobile length', 'mobile number length', 'phone length'],
+        'starts_with' => ['starts with', 'mobile starts with', 'start with'],
+        'region_label' => ['region label', 'state label'],
+        'city_label' => ['city label', 'district label'],
         'state' => ['state', 'region'],
         'district' => ['district', 'city'],
         'group_name' => ['whatsapp group name', 'group name'],
@@ -350,11 +358,19 @@ class WhatsAppCommunityImportService
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->fromArray([
-            ['Country', 'State', 'District', 'WhatsApp Group Name', 'WhatsApp Group Link', 'Status', 'Description'],
-            ['India', 'Punjab', 'Mohali', 'Mohali Community', 'https://chat.whatsapp.com/ABC123', 'Active', 'Mohali district community'],
-            ['India', 'Punjab', 'Patiala', 'Patiala Community', 'https://chat.whatsapp.com/DEF456', 'Active', 'Patiala district community'],
+            ['Country', 'Phone Code', 'Mobile Length', 'Starts With', 'Region Label', 'City Label', 'State', 'District', 'WhatsApp Group Name', 'WhatsApp Group Link', 'Status', 'Description'],
+            ['India', '+91', '10', '6,7,8,9', 'State', 'District', 'Punjab', 'Mohali', 'Mohali Community', 'https://chat.whatsapp.com/ABC123', 'Active', 'Mohali district community'],
+            ['UAE', '+971', '9', '5', 'Emirate', 'City / Area', 'Dubai', 'Deira', 'Deira Community', 'https://chat.whatsapp.com/DEF456', 'Active', 'Deira area community'],
         ], null, 'A1');
-        $sheet->getStyle('A1:G1')->getFont()->setBold(true);
+        $sheet->getStyle('A1:L1')->getFont()->setBold(true);
+
+        // Phone columns stay text so Excel keeps "+971" and does not turn "10-11" into a date.
+        $sheet->getStyle('B1:D1000')->getNumberFormat()->setFormatCode(NumberFormat::FORMAT_TEXT);
+        foreach ([2 => ['+91', '10', '6,7,8,9'], 3 => ['+971', '9', '5']] as $row => $values) {
+            foreach (['B', 'C', 'D'] as $i => $column) {
+                $sheet->setCellValueExplicit($column.$row, $values[$i], DataType::TYPE_STRING);
+            }
+        }
 
         $writer = new Xlsx($spreadsheet);
 
@@ -881,6 +897,10 @@ class WhatsAppCommunityImportService
             ];
 
             $error = $this->validateRow($countryDisplay, $stateDisplay, $districtDisplay, $groupName, $groupLink, $statusInput);
+            $countryFields = [];
+            if ($error === null) {
+                ['rules' => $countryFields, 'error' => $error] = $this->parseCountryFields($row);
+            }
             if ($error !== null) {
                 $summary['errors']++;
                 $issues[] = [...$issueBase, 'type' => 'error', 'reason' => $error];
@@ -915,6 +935,19 @@ class WhatsAppCommunityImportService
             }
 
             $countryRecord = $countries[$countryKey] ?? null;
+
+            // A new country needs a Phone Code, otherwise registration cannot show a calling code for it.
+            if ($countryRecord === null && ! isset($countryFields['phone_code'])) {
+                $summary['errors']++;
+                $issues[] = [
+                    ...$issueBase,
+                    'type' => 'error',
+                    'reason' => "Phone Code is required for new country {$countryDisplay} (e.g. +971).",
+                ];
+
+                continue;
+            }
+
             $regionRecord = $countryRecord
                 ? ($regions[$countryRecord['id'].'|'.$stateKey] ?? null)
                 : null;
@@ -938,7 +971,10 @@ class WhatsAppCommunityImportService
 
             $countryIsNew = $countryRecord === null;
             if ($countryIsNew) {
-                $countryRecord = $this->makeCountry($countryDisplay, $usedCountryCodes, $commit);
+                $countryRecord = $this->makeCountry($countryDisplay, $usedCountryCodes, $countryFields, $commit);
+                $countries[$countryKey] = $countryRecord;
+            } else {
+                $this->applyCountryFields($countryRecord, $countryFields, $commit);
                 $countries[$countryKey] = $countryRecord;
             }
 
@@ -1118,7 +1154,7 @@ class WhatsAppCommunityImportService
     /**
      * @return array<string, mixed>
      */
-    private function makeCountry(string $display, array &$usedCountryCodes, bool $commit): array
+    private function makeCountry(string $display, array &$usedCountryCodes, array $countryFields, bool $commit): array
     {
         $code = $this->generateCountryCode($display, $usedCountryCodes);
         $usedCountryCodes[strtoupper($code)] = true;
@@ -1129,6 +1165,7 @@ class WhatsAppCommunityImportService
                 'code' => $code,
                 'phone_code' => null,
                 'status' => Status::ACTIVE,
+                ...$countryFields,
             ])->id
             : 'new:country:'.$display;
 
@@ -1136,7 +1173,81 @@ class WhatsAppCommunityImportService
             'id' => $id,
             'name' => $display,
             'code' => $code,
+            'fields_applied' => array_fill_keys(array_keys($countryFields), true),
         ];
+    }
+
+    /**
+     * Saves Phone Code / Mobile Length / Starts With / Region Label / City Label from the
+     * sheet onto an existing country. The first row that fills a field wins, so repeated
+     * country rows do not flip values.
+     *
+     * @param  array<string, mixed>  $countryRecord
+     * @param  array<string, mixed>  $countryFields
+     */
+    private function applyCountryFields(array &$countryRecord, array $countryFields, bool $commit): void
+    {
+        $applied = $countryRecord['fields_applied'] ?? [];
+        $pending = array_diff_key($countryFields, $applied);
+        if ($pending === []) {
+            return;
+        }
+
+        if ($commit && is_int($countryRecord['id'])) {
+            Country::query()->whereKey($countryRecord['id'])->update($pending);
+        }
+
+        $countryRecord['fields_applied'] = $applied + array_fill_keys(array_keys($pending), true);
+    }
+
+    /**
+     * Reads the optional country columns: Phone Code, Mobile Length ("9" or "10-11"),
+     * Starts With ("5" or "6,7,8,9"), Region Label and City Label ("Emirate", "City / Area").
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{rules: array<string, mixed>, error: ?string}
+     */
+    private function parseCountryFields(array $row): array
+    {
+        $rules = [];
+
+        foreach (['region_label' => 'Region Label', 'city_label' => 'City Label'] as $key => $column) {
+            $label = LocationNameNormalizer::display($row[$key] ?? '');
+            if ($label === '') {
+                continue;
+            }
+            if (mb_strlen($label) > 50) {
+                return ['rules' => [], 'error' => "{$column} must be 50 characters or fewer."];
+            }
+            $rules[$key] = $label;
+        }
+
+        $phoneCode = trim((string) ($row['phone_code'] ?? ''));
+        if ($phoneCode !== '') {
+            $rules['phone_code'] = MobileRules::phoneCode($phoneCode);
+            if ($rules['phone_code'] === null) {
+                return ['rules' => [], 'error' => MobileRules::PHONE_CODE_ERROR];
+            }
+        }
+
+        $length = trim((string) ($row['mobile_length'] ?? ''));
+        if ($length !== '') {
+            $range = MobileRules::length($length);
+            if ($range === null) {
+                return ['rules' => [], 'error' => MobileRules::LENGTH_ERROR];
+            }
+            [$rules['mobile_min_length'], $rules['mobile_max_length']] = $range;
+        }
+
+        $startsWith = trim((string) ($row['starts_with'] ?? ''));
+        if ($startsWith !== '') {
+            $rules['mobile_starts_with'] = MobileRules::startsWith($startsWith);
+            if ($rules['mobile_starts_with'] === null) {
+                return ['rules' => [], 'error' => MobileRules::STARTS_WITH_ERROR];
+            }
+        }
+
+        return ['rules' => $rules, 'error' => null];
     }
 
     /**

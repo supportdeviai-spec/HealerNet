@@ -1,4 +1,5 @@
 import { Select } from '../admin/AdminShared';
+import SearchableSelect from '../common/SearchableSelect';
 
 export default function CountrySelect({
   value,
@@ -7,6 +8,7 @@ export default function CountrySelect({
   loading = false,
   disabled = false,
   label = '',
+  labelClassName = 'block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5',
   placeholder = 'Select Country',
   className = '',
   id = 'country-select',
@@ -17,7 +19,7 @@ export default function CountrySelect({
   return (
     <div className={className}>
       {label ? (
-        <label htmlFor={id} className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1.5">
+        <label htmlFor={id} className={labelClassName}>
           {label}
         </label>
       ) : null}
@@ -36,22 +38,17 @@ export default function CountrySelect({
           ))}
         </Select>
       ) : (
-        <select
+        <SearchableSelect
           id={id}
           value={value || ''}
           onChange={onChange}
           disabled={disabled || loading}
-          required
           className={selectClassName}
           style={selectStyle}
-        >
-          <option value="">{loading ? 'Loading countries…' : placeholder}</option>
-          {countries.map((country) => (
-            <option key={country.id} value={country.id}>
-              {country.name}
-            </option>
-          ))}
-        </select>
+          placeholder={loading ? 'Loading countries…' : placeholder}
+          searchPlaceholder="Search country…"
+          options={countries.map((country) => ({ value: country.id, label: country.name }))}
+        />
       )}
     </div>
   );

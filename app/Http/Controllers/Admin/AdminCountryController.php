@@ -11,6 +11,7 @@ use App\Http\Requests\Admin\UpdateCountryRequest;
 use App\Models\Country;
 use App\Services\GuardedRecordDeletionService;
 use App\Services\LocationService;
+use App\Support\MobileRules;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -45,7 +46,7 @@ class AdminCountryController extends Controller
 
     public function store(StoreCountryRequest $request): JsonResponse
     {
-        $country = Country::create($request->validated());
+        $country = Country::create(MobileRules::toCountryColumns($request->validated()));
         $this->locationService->clearLocationCache();
 
         return $this->successResponse('Country created successfully.', $country, [], 201);
@@ -58,7 +59,7 @@ class AdminCountryController extends Controller
 
     public function update(UpdateCountryRequest $request, Country $country): JsonResponse
     {
-        $country->update($request->validated());
+        $country->update(MobileRules::toCountryColumns($request->validated()));
         $this->locationService->clearLocationCache();
 
         return $this->successResponse('Country updated successfully.', $country->fresh());
