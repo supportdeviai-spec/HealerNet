@@ -97,13 +97,13 @@ export default function AuthLayout({ children, title, subtitle, page = 'login' }
       }`}
     >
       <div
-        className={`w-full min-w-0 rounded-none overflow-hidden grid grid-cols-1 min-[1024px]:max-[1279px]:grid-cols-[60%_40%] min-[1024px]:max-[1279px]:grid-rows-1 min-[1024px]:max-[1279px]:items-stretch xl:grid-cols-12 xl:items-stretch bg-[#0A221A] border border-white/10 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.7)] ${
+        className={`w-full min-w-0 rounded-none overflow-hidden grid grid-cols-1 min-[1024px]:max-[1279px]:grid-cols-[60%_40%] min-[1024px]:max-[1279px]:grid-rows-1 min-[1024px]:max-[1279px]:items-stretch xl:grid-cols-12 xl:items-stretch bg-[#0A221A] border-2 border-[#D4AF37]/70 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.7)] ${
           isRegister
             ? 'max-w-7xl'
             : 'max-w-[1440px] lg:min-h-[calc(100dvh-2.5rem)]'
         }`}
       >
-        <aside className="relative w-full min-w-0 overflow-hidden bg-[#041610] self-stretch min-[1024px]:max-[1279px]:h-full xl:col-span-6">
+        <aside className="relative w-full min-w-0 overflow-hidden bg-[#041610] self-stretch min-[1024px]:max-[1279px]:h-full xl:col-span-6 border-b-2 min-[1024px]:border-b-0 min-[1024px]:border-r-2 border-[#D4AF37]/70">
           {showDynamicBanner ? (
             <>
               {loadingBanner && (

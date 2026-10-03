@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Models\EmailTemplate;
 use App\Models\User;
 use App\Models\WhatsAppGroup;
@@ -13,14 +14,14 @@ class EmailService
         protected CommunityAssignmentService $communityAssignment,
     ) {}
 
-    public function sendWelcomeEmail(User $user): bool
+    public function sendWelcomeEmail(User $user, array $categoryIds = []): bool
     {
         $user->loadMissing(['country', 'region', 'city', 'category', 'role']);
 
         return $this->mailDispatcher->sendTemplate(
             EmailTemplate::SLUG_WELCOME,
             $user->email,
-            $this->buildWelcomeVariables($user),
+            $this->buildWelcomeVariables($user, $categoryIds),
             queue: true,
         );
     }
@@ -53,7 +54,7 @@ class EmailService
         );
     }
 
-    public function buildWelcomeVariables(User $user): array
+    public function buildWelcomeVariables(User $user, array $categoryIds = []): array
     {
         $user->loadMissing(['country', 'region', 'city', 'category', 'role', 'whatsappGroups']);
 
@@ -71,8 +72,8 @@ class EmailService
             $user->country?->name,
         ])->filter()->implode(', ');
 
-        $categoryName = $user->category?->name
-            ?? $assignedGroup?->category?->name;
+        $categoryName = $this->welcomeCategoryNames($user, $categoryIds)
+            ?: ($assignedGroup?->category?->name);
 
         return [
             'name' => $user->name,
@@ -84,6 +85,36 @@ class EmailService
             'group_url' => $assignedGroup?->whatsapp_url ?? '',
             'groups_html' => $this->buildWelcomeGroupsHtml($groups, $locationLine, $categoryName),
         ];
+    }
+
+    private function welcomeCategoryNames(User $user, array $categoryIds = []): ?string
+    {
+        $ids = collect($categoryIds)
+            ->map(fn ($id) => (string) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        $names = collect();
+        if ($ids->isNotEmpty()) {
+            $byId = Category::query()
+                ->whereIn('id', $ids)
+                ->get()
+                ->keyBy(fn (Category $category) => (string) $category->id);
+
+            $names = $ids
+                ->map(fn ($id) => $byId->get($id)?->name)
+                ->filter()
+                ->values();
+        }
+
+        if ($names->isEmpty() && $user->category?->name) {
+            $names = collect([$user->category->name]);
+        }
+
+        $joined = $names->implode(', ');
+
+        return $joined !== '' ? $joined : null;
     }
 
     private function formatGroupForEmail(WhatsAppGroup $group): array

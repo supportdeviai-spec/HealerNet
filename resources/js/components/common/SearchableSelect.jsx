@@ -5,6 +5,7 @@ import { Check, ChevronDown, Search } from 'lucide-react';
  * Select2-style dropdown with a search box, used in place of a native <select>.
  * onChange receives a select-like event ({ target: { value } }), so existing
  * `(e) => handler(e.target.value)` code works unchanged.
+ * Pass `multiple` + `max` for multi-select (value is an array of option values).
  */
 export default function SearchableSelect({
   id,
@@ -17,6 +18,8 @@ export default function SearchableSelect({
   disabled = false,
   className = '',
   style,
+  multiple = false,
+  max,
 }) {
   const autoId = useId();
   const baseId = id || `searchable-select-${autoId}`;
@@ -31,7 +34,14 @@ export default function SearchableSelect({
   const searchRef = useRef(null);
   const listRef = useRef(null);
 
-  const selected = options.find((opt) => String(opt.value) === String(value ?? ''));
+  const selectedValues = useMemo(() => {
+    if (!multiple) return [];
+    return Array.isArray(value) ? value.map((v) => String(v)) : [];
+  }, [multiple, value]);
+
+  const selected = multiple
+    ? options.filter((opt) => selectedValues.includes(String(opt.value)))
+    : options.find((opt) => String(opt.value) === String(value ?? ''));
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -47,7 +57,9 @@ export default function SearchableSelect({
 
   const openList = () => {
     if (disabled) return;
-    const selectedIndex = options.findIndex((opt) => String(opt.value) === String(value ?? ''));
+    const selectedIndex = multiple
+      ? options.findIndex((opt) => selectedValues.includes(String(opt.value)))
+      : options.findIndex((opt) => String(opt.value) === String(value ?? ''));
     setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
     setQuery('');
     setOpen(true);
@@ -55,6 +67,20 @@ export default function SearchableSelect({
 
   const choose = (opt) => {
     if (!opt) return;
+
+    if (multiple) {
+      const id = String(opt.value);
+      const already = selectedValues.includes(id);
+      if (!already && max != null && selectedValues.length >= max) {
+        return;
+      }
+      const next = already
+        ? selectedValues.filter((v) => v !== id)
+        : [...selectedValues, id];
+      onChange?.({ target: { value: next } });
+      return;
+    }
+
     if (String(opt.value) !== String(value ?? '')) {
       onChange?.({ target: { value: String(opt.value) } });
     }
@@ -120,6 +146,10 @@ export default function SearchableSelect({
     }
   };
 
+  const buttonLabel = multiple
+    ? (selected.length ? selected.map((opt) => opt.label).join(', ') : placeholder)
+    : (selected ? selected.label : placeholder);
+
   return (
     <div ref={rootRef} className="relative w-full">
       <button
@@ -135,8 +165,8 @@ export default function SearchableSelect({
         className={`${className} flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed`}
         style={style}
       >
-        <span className={`truncate ${selected ? '' : 'opacity-80'}`}>
-          {selected ? selected.label : placeholder}
+        <span className={`truncate ${multiple ? (selected.length ? '' : 'opacity-80') : (selected ? '' : 'opacity-80')}`}>
+          {buttonLabel}
         </span>
         <ChevronDown
           size={16}
@@ -169,30 +199,55 @@ export default function SearchableSelect({
             />
           </div>
 
-          <ul ref={listRef} id={listId} role="listbox" className="max-h-60 overflow-y-auto py-1">
+          <ul
+            ref={listRef}
+            id={listId}
+            role="listbox"
+            aria-multiselectable={multiple || undefined}
+            className="max-h-60 overflow-y-auto py-1"
+          >
             {filtered.length === 0 && (
               <li className="px-4 py-2.5 text-sm text-slate-400" role="presentation">
                 {noResultsText}
               </li>
             )}
             {filtered.map((opt, index) => {
-              const isSelected = String(opt.value) === String(value ?? '');
+              const isSelected = multiple
+                ? selectedValues.includes(String(opt.value))
+                : String(opt.value) === String(value ?? '');
               const isActive = index === activeIndex;
+              const atMax = multiple && max != null && selectedValues.length >= max && !isSelected;
               return (
                 <li
                   key={opt.value}
                   id={`${baseId}-opt-${index}`}
                   role="option"
                   aria-selected={isSelected}
+                  aria-disabled={atMax || undefined}
                   onMouseEnter={() => setActiveIndex(index)}
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => choose(opt)}
-                  className={`flex items-center justify-between gap-2 px-4 py-2 text-sm cursor-pointer ${
-                    isActive ? 'bg-[#0F382C] text-white' : 'text-slate-100'
-                  } ${isSelected ? 'font-semibold text-[#a3e635]' : ''}`}
+                  onClick={() => {
+                    if (atMax) return;
+                    choose(opt);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm ${
+                    atMax ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+                  } ${isActive ? 'bg-[#0F382C] text-white' : 'text-slate-100'} ${
+                    isSelected ? 'font-semibold text-[#a3e635]' : ''
+                  }`}
                 >
-                  <span className="truncate">{opt.label}</span>
-                  {isSelected && <Check size={14} className="shrink-0" aria-hidden="true" />}
+                  {multiple && (
+                    <span
+                      className={`mt-px w-4 h-4 shrink-0 rounded border flex items-center justify-center ${
+                        isSelected ? 'border-[#a3e635] bg-[#a3e635]/20' : 'border-white/30'
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {isSelected && <Check size={11} />}
+                    </span>
+                  )}
+                  <span className="truncate flex-1">{opt.label}</span>
+                  {!multiple && isSelected && <Check size={14} className="shrink-0" aria-hidden="true" />}
                 </li>
               );
             })}

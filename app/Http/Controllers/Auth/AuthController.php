@@ -134,7 +134,9 @@ class AuthController extends Controller
                 'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
                 'password' => ['nullable', 'string', 'min:8'],
                 'mobile' => ['required', 'string', User::uniqueMobileRule(), $this->mobileMatchesCountryRule($request)],
-                'category_id' => ['required', 'uuid', 'exists:categories,id'],
+                'category_id' => ['required_without:category_ids', 'nullable', 'uuid', 'exists:categories,id'],
+                'category_ids' => ['required_without:category_id', 'nullable', 'array', 'min:1', 'max:3'],
+                'category_ids.*' => ['uuid', 'distinct', 'exists:categories,id'],
                 'country_id' => ['required', 'integer', 'exists:countries,id'],
                 'region_id' => ['required_without:state_id', 'integer', 'exists:regions,id'],
                 'state_id' => ['required_without:region_id', 'integer', 'exists:regions,id'],
@@ -196,16 +198,37 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // Category validation
-        $categoryValid = \App\Models\Category::where('id', $validated['category_id'])
-            ->active()
-            ->exists();
-        if (!$categoryValid) {
+        $categoryIds = collect($validated['category_ids'] ?? [])
+            ->map(fn ($id) => (string) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($categoryIds->isEmpty() && !empty($validated['category_id'])) {
+            $categoryIds = collect([(string) $validated['category_id']]);
+        }
+
+        $categoryIds = $categoryIds->all();
+
+        if (count($categoryIds) < 1 || count($categoryIds) > 3) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'The selected healthcare category is invalid or inactive.'
+                'message' => 'Please select between 1 and 3 healthcare categories.',
+                'errors' => ['category_ids' => ['Please select between 1 and 3 healthcare categories.']],
             ], 422);
         }
+
+        $activeCategoryCount = \App\Models\Category::whereIn('id', $categoryIds)
+            ->active()
+            ->count();
+        if ($activeCategoryCount !== count($categoryIds)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The selected healthcare category is invalid or inactive.',
+            ], 422);
+        }
+
+        $validated['category_id'] = $categoryIds[0];
 
         // Security: Ensure Email OTP has been verified
         $emailOtp = OtpCode::where('email', $validated['email'])
@@ -272,12 +295,18 @@ class AuthController extends Controller
         }
 
         try {
-            event(new UserRegistered($user));
+            event(new UserRegistered($user, $categoryIds));
         } catch (\Throwable $e) {
             Log::warning('Failed to dispatch UserRegistered event: ' . $e->getMessage());
         }
 
         $user->load(['role', 'category', 'country', 'state', 'city', 'communities', 'whatsappGroups', 'profile']);
+
+        $selectedCategories = \App\Models\Category::whereIn('id', $categoryIds)
+            ->get(['id', 'name', 'slug', 'icon']);
+        $categoryNames = $selectedCategories->pluck('name')->values()->all();
+        $categoryNameStr = implode(', ', $categoryNames);
+        $user->setRelation('categories', $selectedCategories);
 
         $communityGroups = $this->resolveRegistrationCommunityGroups($user);
 
@@ -292,6 +321,10 @@ class AuthController extends Controller
             'message' => 'Registration successful.',
             'token' => $token,
             'user' => $user,
+            'categories' => $selectedCategories,
+            'category_ids' => $categoryIds,
+            'category_names' => $categoryNames,
+            'category_name' => $categoryNameStr,
             'community' => $community ? [
                 'id' => $community->id,
                 'name' => $community->name,

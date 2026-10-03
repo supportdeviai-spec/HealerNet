@@ -1,32 +1,35 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import CommunityGroupList, { mergeCommunityGroups } from '../../components/location/CommunityGroupList';
+import { mergeCommunityGroups } from '../../components/location/CommunityGroupList';
 import { useCommunityGroups } from '../../hooks/useCommunityGroups';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../services/api';
-import { MapPin, Users, Sparkles, User, UserPlus } from 'lucide-react';
+import { MapPin, Users, User, UserPlus, Check } from 'lucide-react';
 
 import { DEFAULT_BANNER_IMAGES, resolveBannerSrc } from '../../constants/bannerPages';
-import HealerNetLogo from '../../components/auth/HealerNetLogo';
 
 const DEFAULT_BANNER = DEFAULT_BANNER_IMAGES.thanks;
 const REGISTRATION_STORAGE_KEY = 'healernet_registration';
 
-function filterGroupsByCategory(groups, categoryId) {
-  if (!categoryId || !groups?.length) return groups || [];
+function filterGroupsByCategory(groups, categoryIds) {
+  if (!categoryIds || !groups?.length) return groups || [];
+  const ids = Array.isArray(categoryIds)
+    ? categoryIds.map((id) => String(id))
+    : [String(categoryIds)];
+  if (!ids.length) return groups || [];
   const matched = groups.filter(
-    (g) => !g.category_id || String(g.category_id) === String(categoryId)
+    (g) => !g.category_id || ids.includes(String(g.category_id))
   );
   return matched.length ? matched : groups;
 }
 
-function pickGroupsForThanks({ fetchedGroups, initialData, userData, categoryId }) {
+function pickGroupsForThanks({ fetchedGroups, initialData, userData, categoryIds }) {
   const merged = mergeCommunityGroups(
     initialData?.community_groups,
     fetchedGroups,
     initialData?.community,
     userData?.communities
   );
-  return filterGroupsByCategory(merged, categoryId);
+  return filterGroupsByCategory(merged, categoryIds);
 }
 
 export default function RegisterSuccessPage({ registrationData, onNavigate }) {
@@ -43,7 +46,64 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   const initialData = registrationData || storedData;
   const [userData, setUserData] = useState(initialData?.user || null);
   const cityId = userData?.city_id || initialData?.user?.city_id;
-  const categoryId = userData?.category_id || initialData?.user?.category_id;
+
+  const categoryList = useMemo(() => {
+    // 1. Check if categories array exists on initialData or userData
+    const list = initialData?.categories || userData?.categories;
+    if (Array.isArray(list) && list.length > 0) {
+      return list
+        .map((c) => (typeof c === 'string' ? { name: c, id: c } : c))
+        .filter((c) => c?.name);
+    }
+
+    // 2. Check if comma-separated category_name exists on initialData or userData
+    const rawName = initialData?.category_name || userData?.category_name;
+    if (rawName && typeof rawName === 'string') {
+      const parts = rawName.split(',').map((s) => s.trim()).filter(Boolean);
+      if (parts.length > 0) {
+        return parts.map((name, i) => ({ id: `cat-${i}`, name }));
+      }
+    }
+
+    // 3. Fallback to single category object from user
+    const single = userData?.category || initialData?.user?.category;
+    if (single?.name) {
+      return [single];
+    }
+
+    return [];
+  }, [initialData, userData]);
+
+  const categoryName = useMemo(() => {
+    if (categoryList.length > 0) {
+      return categoryList.map((c) => c.name).join(', ');
+    }
+    return (
+      initialData?.category_name ||
+      userData?.category_name ||
+      userData?.category?.name ||
+      initialData?.user?.category?.name ||
+      'Healthcare Professional'
+    );
+  }, [categoryList, initialData, userData]);
+
+  const categoryIds = useMemo(() => {
+    if (Array.isArray(initialData?.category_ids) && initialData.category_ids.length) {
+      return initialData.category_ids.map(String);
+    }
+    if (Array.isArray(userData?.category_ids) && userData.category_ids.length) {
+      return userData.category_ids.map(String);
+    }
+    if (categoryList.length > 0) {
+      const validIds = categoryList
+        .map((c) => String(c.id || ''))
+        .filter((id) => id && !id.startsWith('cat-'));
+      if (validIds.length) return validIds;
+    }
+    const singleId = userData?.category_id || initialData?.user?.category_id;
+    return singleId ? [String(singleId)] : [];
+  }, [initialData, userData, categoryList]);
+
   const { groups, loading: fetchingCommunity, error: groupsError } = useCommunityGroups(cityId);
   const [loading, setLoading] = useState(!initialData);
   const [bannerSrc, setBannerSrc] = useState(DEFAULT_BANNER);
@@ -66,7 +126,7 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
           setBannerSrc(resolveBannerSrc(data.data[0]) || DEFAULT_BANNER);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => { cancelled = true; };
   }, []);
 
@@ -91,19 +151,22 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   }, [userData]);
 
   const communityGroups = useMemo(
-    () => pickGroupsForThanks({ fetchedGroups: groups, initialData, userData, categoryId }),
-    [groups, initialData, userData, categoryId]
+    () => pickGroupsForThanks({ fetchedGroups: groups, initialData, userData, categoryIds }),
+    [groups, initialData, userData, categoryIds]
   );
 
   const countryName = userData?.country?.name || initialData?.country_name || '';
   const regionName = userData?.region?.name || userData?.state?.name || initialData?.region_name || initialData?.state_name || '';
   const cityName = userData?.city?.name || initialData?.city_name || '';
-  const categoryName = userData?.category?.name || initialData?.category_name || 'Healthcare Professional';
   const locationLine = [cityName, regionName, countryName].filter(Boolean).join(', ');
   const heading = banner?.title?.trim() || null;
   const lead = banner?.description?.trim() || null;
-  const firstName = (userData?.name || 'Member').split(' ')[0];
-  const linkCount = communityGroups.filter((g) => g.whatsapp_url || g.whatsapp_link).length;
+
+  const validCommunityGroups = useMemo(() => {
+    return (communityGroups || []).filter((g) => g && (g.whatsapp_url || g.whatsapp_link));
+  }, [communityGroups]);
+
+  const groupLocation = [cityName, regionName].filter(Boolean).join(', ') || locationLine || 'Local Community';
 
   const handleRegisterAnother = () => {
     sessionStorage.removeItem(REGISTRATION_STORAGE_KEY);
@@ -112,147 +175,195 @@ export default function RegisterSuccessPage({ registrationData, onNavigate }) {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#041610] flex items-start sm:items-center justify-center p-3 sm:p-5 md:p-8 font-sans overflow-x-hidden">
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <img
-          src={bannerSrc}
-          alt=""
-          aria-hidden
-          className="absolute inset-0 w-full h-full object-cover object-top opacity-20 blur-sm scale-105"
-          onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-br from-[#041610]/95 via-[#0A221A]/90 to-[#061812]/95" />
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] max-w-full h-[600px] bg-[#65A30D]/8 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#D4AF37]/10 rounded-full blur-3xl" />
-      </div>
+    <div className="min-h-[100dvh] w-full bg-[#051510] text-[#eef5ef] font-['Plus_Jakarta_Sans',system-ui,sans-serif] flex items-start sm:items-center justify-center p-0 min-[601px]:p-5 md:p-8 overflow-x-hidden selection:bg-[#a3e635] selection:text-[#051510]">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+      `}</style>
 
-      <div className="relative w-full max-w-xl sm:max-w-2xl lg:max-w-4xl xl:max-w-5xl my-2 sm:my-0 animate-fadeIn min-w-0">
-        <div className="rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_32px_80px_-16px_rgba(0,0,0,0.65)] border border-[#D4AF37]/40 bg-[#0A221A]">
-          <div className="relative w-full aspect-[80/26] max-h-72 overflow-hidden bg-[#041610]">
-            <img
-              src={bannerSrc}
-              alt="HealerNet"
-              sizes="(max-width: 768px) 100vw, 1024px"
-              className="absolute inset-0 w-full h-full object-contain object-center"
-              onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
-            />
-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#0A221A] to-transparent pointer-events-none" />
-            <div className="absolute inset-0 flex flex-col justify-end p-4 sm:p-6 md:p-8">
-              <div className="flex items-center gap-2.5 mb-2 sm:mb-3 min-w-0">
-                <HealerNetLogo size="sm" showText={false} />
-                <span className="text-sm font-bold text-white tracking-tight truncate">
-                  Healer<span className="text-[#A3E635]">Net</span>
-                </span>
+      <div className="w-full max-w-[900px] mx-auto border-x-0 min-[601px]:border-x border-y min-[601px]:border border-[rgba(224,180,76,0.4)] rounded-none overflow-hidden bg-[#0a1f18] shadow-[0_30px_90px_-20px_rgba(0,0,0,0.75)] animate-fadeIn">
+        
+        {/* 1) FULL BANNER HERO */}
+        <section className="relative w-full overflow-hidden bg-[#051510] border-b border-[rgba(170,210,140,0.16)]">
+          <img
+            src={bannerSrc}
+            alt="HealerNet Welcome Banner"
+            width={1600}
+            height={520}
+            fetchPriority="high"
+            className="w-full h-auto block"
+            onError={(e) => { e.target.onerror = null; e.target.src = DEFAULT_BANNER; }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[#0a1f18] to-transparent pointer-events-none"
+            aria-hidden="true"
+          />
+        </section>
+
+        {/* PAGE CONTENT CONTAINER */}
+        <div className="p-[clamp(18px,4vw,36px)] space-y-6 sm:space-y-8">
+          
+          {/* 2) WELCOME BLOCK (centered) */}
+          <header className="text-center pb-6 sm:pb-8 border-b border-[rgba(170,210,140,0.16)] space-y-3">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-none text-[13px] font-semibold text-[#a3e635] bg-[rgba(163,230,53,0.1)] border border-[rgba(163,230,53,0.3)]">
+                <Check size={14} strokeWidth={2.5} className="text-[#a3e635]" />
+                <span>Registration complete</span>
+              </span>
+            </div>
+
+            <h1 className="text-[clamp(26px,4.4vw,40px)] font-extrabold text-[#eef5ef] leading-[1.15] tracking-[-0.025em]">
+              {heading || 'Welcome to HealerNet'}
+            </h1>
+
+            <p className="text-[14px] sm:text-[15px] text-[#93ab9f] max-w-[46ch] mx-auto leading-relaxed">
+              {lead || 'Join your local WhatsApp community and start collaborating with healers near you.'}
+            </p>
+          </header>
+
+          {/* 3) YOUR PROFILE */}
+          <section className="space-y-3">
+            <div className="flex items-center gap-2 text-[15px] font-bold text-[#eef5ef]">
+              <User size={18} strokeWidth={2} className="text-[#e0b44c]" />
+              <span>Your profile</span>
+            </div>
+
+            <dl className="grid grid-cols-1 min-[521px]:grid-cols-2 rounded-none bg-[#0a1f18] border border-[rgba(170,210,140,0.16)] overflow-hidden">
+              {/* Name */}
+              <div className="px-[18px] py-[14px] border-b min-[521px]:border-r border-[rgba(170,210,140,0.16)]">
+                <dt className="text-[12px] text-[#93ab9f] font-medium mb-1">Name</dt>
+                <dd className="text-[15px] font-semibold text-[#eef5ef] [overflow-wrap:anywhere] break-words">
+                  {userData?.name || '—'}
+                </dd>
               </div>
-              <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-white leading-snug break-words">
-                {heading || (
+
+              {/* Email */}
+              <div className="px-[18px] py-[14px] border-b border-[rgba(170,210,140,0.16)]">
+                <dt className="text-[12px] text-[#93ab9f] font-medium mb-1">Email</dt>
+                <dd className="text-[15px] font-semibold text-[#eef5ef] [overflow-wrap:anywhere] break-all">
+                  {userData?.email || '—'}
+                </dd>
+              </div>
+
+              {/* Category */}
+              <div className="px-[18px] py-[14px] border-b min-[521px]:border-r border-[rgba(170,210,140,0.16)]">
+                <dt className="text-[12px] text-[#93ab9f] font-medium mb-1">
+                  {categoryList.length > 1 ? 'Categories' : 'Category'}
+                </dt>
+                <dd className="text-[15px] font-semibold text-[#a3e635] [overflow-wrap:anywhere] break-words">
+                  {categoryName || 'Healthcare Professional'}
+                </dd>
+              </div>
+
+              {/* Mobile */}
+              <div className="px-[18px] py-[14px] border-b border-[rgba(170,210,140,0.16)]">
+                <dt className="text-[12px] text-[#93ab9f] font-medium mb-1">Mobile</dt>
+                <dd className="text-[15px] font-semibold text-[#eef5ef] [overflow-wrap:anywhere]">
+                  {userData?.mobile || '—'}
+                </dd>
+              </div>
+
+              {/* Location (spans full width as the last row) */}
+              <div className="col-span-1 min-[521px]:col-span-2 px-[18px] py-[14px]">
+                <dt className="text-[12px] text-[#93ab9f] font-medium mb-1">Location</dt>
+                <dd className="text-[15px] font-semibold text-[#eef5ef] [overflow-wrap:anywhere] break-words">
+                  {locationLine || '—'}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          {/* 4) JOIN YOUR LOCAL COMMUNITY (WhatsApp groups) */}
+          <section className="bg-[linear-gradient(180deg,#0e2a20,#0a1f18)] border border-[rgba(170,210,140,0.28)] rounded-none p-[clamp(18px,3vw,24px)] space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-[clamp(18px,2.6vw,21px)] font-bold text-[#eef5ef]">
+                Join your local community
+              </h2>
+              <p className="text-[14px] text-[#93ab9f] leading-relaxed">
+                {categoryList.length > 1 ? (
                   <>
-                    Thank You for Joining{' '}
-                    <span className="bg-gradient-to-r from-[#A3E635] to-[#E5C158] bg-clip-text text-transparent">
-                      HealerNet
-                    </span>
+                    As a practitioner in <strong className="text-[#a3e635] font-semibold">{categoryName}</strong>
+                  </>
+                ) : (
+                  <>
+                    As a <strong className="text-[#a3e635] font-semibold">{categoryName}</strong>
                   </>
                 )}
-              </h1>
-              <p className="mt-1.5 text-xs sm:text-sm text-emerald-100/85 max-w-lg leading-relaxed">
-                {lead || `Welcome, ${firstName}! You're now part of our global evidence-based healing community.`}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-4 sm:p-7 lg:p-8 space-y-5">
-            <div className="space-y-3">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-[#E5C158] flex items-center gap-1.5">
-                <User size={12} /> Your Profile
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-xs p-4 rounded-2xl bg-[#071812]/80 border border-white/5">
-                <div className="min-w-0">
-                  <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Name</span>
-                  <span className="font-bold text-white break-words">{userData?.name || '—'}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Email</span>
-                  <span className="font-medium text-slate-300 break-all">{userData?.email || '—'}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Category</span>
-                  <span className="font-bold text-[#A3E635] break-words">{categoryName}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="text-slate-500 block text-[10px] uppercase font-semibold mb-0.5">Mobile</span>
-                  <span className="font-medium text-slate-300">{userData?.mobile || '—'}</span>
-                </div>
-                {locationLine && (
-                  <div className="sm:col-span-2 pt-2 border-t border-white/5">
-                    <span className="text-slate-500 text-[10px] uppercase font-semibold flex items-center gap-1 mb-1">
-                      <MapPin size={10} className="text-[#65A30D]" /> Location
+                {locationLine ? (
+                  <>
+                    {' '}in{' '}
+                    <span className="text-[#eef5ef] font-semibold">
+                      {cityName ? (regionName ? `${cityName}, ${regionName}` : cityName) : locationLine}
                     </span>
-                    <p className="text-sm font-bold text-white break-words">{locationLine}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="h-px bg-gradient-to-r from-transparent via-[#D4AF37]/30 to-transparent" />
-
-            {/* Community groups */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-[#0F382C]/80 via-[#0B2E24]/90 to-[#061812] border border-[#D4AF37]/25 space-y-3.5">
-              <div>
-                <div className="flex items-center gap-2 text-[#E5C158] mb-1">
-                  <Sparkles size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Connect · Collaborate · Heal</span>
-                </div>
-                <h3 className="text-base sm:text-lg font-extrabold text-white">Join Your Local Community</h3>
-                <p className="text-[11px] sm:text-xs text-emerald-100/75 mt-1 leading-relaxed">
-                  As a <strong className="text-[#A3E635]">{categoryName}</strong>
-                  {locationLine ? <> in <strong className="text-white">{locationLine}</strong></> : null}
-                  , tap a group below to connect on WhatsApp.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl bg-black/20 border border-white/10">
-                <Users size={15} className="text-[#A3E635] shrink-0" />
-                <span className="text-[11px] sm:text-xs text-slate-200">
-                  {groupsError
-                    ? 'Could not load community groups. Please refresh or contact support.'
-                    : !fetchingCommunity && !loading
-                    ? (linkCount
-                      ? `${linkCount} WhatsApp group link${linkCount > 1 ? 's' : ''} ready — tap to join`
-                      : 'No WhatsApp group links are set up for your district yet')
-                    : 'Loading community group links…'}
-                </span>
-              </div>
-
-              <CommunityGroupList
-                groups={communityGroups}
-                loading={fetchingCommunity || loading}
-                cityName={cityName}
-                regionName={regionName}
-                emptyMessage={groupsError
-                  ? 'We could not load your local groups right now. Please try again in a few minutes.'
-                  : 'Local WhatsApp groups for your district are being set up. We\'ll notify you when they\'re ready.'}
-              />
-            </div>
-
-            <div className="pt-2 space-y-3">
-              <p className="text-[11px] sm:text-xs text-center text-emerald-100/60 leading-relaxed">
-                Registering for someone else? Use a different email and mobile number.
+                  </>
+                ) : null}
+                , tap a group below to connect on WhatsApp.
               </p>
-              <button
-                type="button"
-                onClick={handleRegisterAnother}
-                className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-[#0F382C] via-[#145240] to-[#65A30D] hover:from-[#09261E] hover:to-[#558B2F] text-white font-bold text-sm shadow-lg shadow-[#0F382C]/30 transition-all"
-              >
-                <UserPlus size={16} />
-                Register Another Account
-              </button>
             </div>
-          </div>
+
+            {fetchingCommunity || loading ? (
+              <p className="text-[14px] text-[#93ab9f] italic py-2">
+                Loading community group links…
+              </p>
+            ) : groupsError ? (
+              <p className="text-[14px] text-[#93ab9f] italic py-2">
+                We could not load your local groups right now. Please try again in a few minutes.
+              </p>
+            ) : validCommunityGroups.length === 0 ? (
+              <p className="text-[14px] text-[#93ab9f] italic py-2">
+                Local WhatsApp groups for your district are being set up. We'll notify you when they're ready.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {validCommunityGroups.map((group, idx) => (
+                  <div
+                    key={group.id || `${group.name}-${idx}`}
+                    className="flex items-center gap-[14px] flex-wrap min-[521px]:flex-nowrap bg-[rgba(255,255,255,0.035)] border border-[rgba(170,210,140,0.16)] rounded-none p-[14px]"
+                  >
+                    <div className="w-[44px] h-[44px] shrink-0 rounded-none bg-[rgba(37,211,102,0.12)] text-[#25d366] flex items-center justify-center">
+                      <Users size={20} strokeWidth={2} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-[15px] font-bold text-[#eef5ef] break-words">
+                        {group.name}
+                      </h3>
+                      <div className="flex items-center gap-1 text-[13px] text-[#93ab9f] mt-0.5">
+                        <MapPin size={13} strokeWidth={2} className="text-[#a3e635] shrink-0" />
+                        <span className="truncate">{groupLocation}</span>
+                      </div>
+                    </div>
+                    <a
+                      href={group.whatsapp_url || group.whatsapp_link || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#25d366] hover:bg-[#20ba5a] text-[#032a12] h-[46px] px-5 rounded-none font-bold text-[14px] inline-flex items-center justify-center shrink-0 w-full min-[521px]:w-auto min-[521px]:ml-auto transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0b44c] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a1f18]"
+                    >
+                      Join WhatsApp group
+                    </a>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* 5) REGISTER ANOTHER ACCOUNT */}
+          <section className="pt-2 space-y-3">
+            <p className="text-[13px] text-[#93ab9f] text-center">
+              Registering for someone else? Use a different email and mobile number.
+            </p>
+            <button
+              type="button"
+              onClick={handleRegisterAnother}
+              className="w-full h-[52px] rounded-none bg-transparent border border-[rgba(170,210,140,0.28)] hover:bg-[rgba(163,230,53,0.06)] hover:border-[rgba(163,230,53,0.45)] text-white font-bold text-[14px] inline-flex items-center justify-center gap-2 transition-colors motion-reduce:transition-none cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e0b44c] focus-visible:ring-offset-2 focus-visible:ring-offset-[#051510]"
+            >
+              <UserPlus size={18} strokeWidth={2} />
+              <span>Register another account</span>
+            </button>
+          </section>
         </div>
 
-        <p className="text-center text-[10px] text-emerald-200/40 mt-4 tracking-wide">
+        <footer className="text-center text-[11px] text-[#93ab9f]/50 py-4 border-t border-[rgba(170,210,140,0.1)]">
           © 2026 HealerNet · Evidence-Based Healing Network
-        </p>
+        </footer>
       </div>
     </div>
   );

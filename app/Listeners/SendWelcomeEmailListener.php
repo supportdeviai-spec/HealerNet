@@ -20,6 +20,6 @@ class SendWelcomeEmailListener implements ShouldQueue
 
     public function handle(UserRegistered $event): void
     {
-        $this->emailService->sendWelcomeEmail($event->user);
+        $this->emailService->sendWelcomeEmail($event->user, $event->categoryIds);
     }
 }

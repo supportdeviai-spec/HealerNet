@@ -13,8 +13,12 @@ class UserRegistered
 
     public User $user;
 
-    public function __construct(User $user)
+    /** @var list<string> */
+    public array $categoryIds;
+
+    public function __construct(User $user, array $categoryIds = [])
     {
         $this->user = $user;
+        $this->categoryIds = array_values(array_filter($categoryIds));
     }
 }

@@ -15,6 +15,8 @@ const BTN_PRIMARY = 'px-4 py-3 rounded-xl bg-[#0F382C] hover:bg-[#145240] text-w
 const FIELD_ERROR = 'text-xs text-rose-500 font-medium mt-1.5';
 const OTP_LENGTH = 4;
 const TITLE_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Dr.', 'Prof.', 'Other'];
+const MIN_CATEGORIES = 1;
+const MAX_CATEGORIES = 3;
 const MAX_NAME_LENGTH = 255;
 const MAX_BUSINESS_NAME_LENGTH = 255;
 
@@ -315,7 +317,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
   const { countries } = useCountries();
 
   const [formData, setFormData] = useState({
-    categoryId: '',
+    categoryIds: [],
     title: '',
     name: '',
     businessName: '',
@@ -527,8 +529,12 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
       return;
     }
 
-    if (!formData.categoryId) {
-      setFormError('Please select a healthcare category.');
+    if (formData.categoryIds.length < MIN_CATEGORIES) {
+      setFormError('Please select at least one healthcare category.');
+      return;
+    }
+    if (formData.categoryIds.length > MAX_CATEGORIES) {
+      setFormError('You can select a maximum of 3 healthcare categories.');
       return;
     }
 
@@ -574,13 +580,16 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
     let registrationSucceeded = false;
 
     try {
-      const selectedCategory = categories.find((cat) => String(cat.id) === String(formData.categoryId));
+      const selectedCategories = categories.filter((cat) =>
+        formData.categoryIds.some((id) => String(id) === String(cat.id))
+      );
 
       const payload = {
         country_id: parseInt(countryId, 10),
         region_id: parseInt(regionId, 10),
         city_id: parseInt(cityId, 10),
-        category_id: formData.categoryId,
+        category_id: formData.categoryIds[0],
+        category_ids: formData.categoryIds,
         title: formData.title || null,
         name: fullName,
         business_name: businessName || null,
@@ -610,7 +619,7 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           region_name: data.user?.region?.name || data.user?.state?.name || '',
           state_name: data.user?.region?.name || data.user?.state?.name || '',
           city_name: data.user?.city?.name || '',
-          category_name: selectedCategory?.name || data.user?.category?.name || '',
+          category_name: selectedCategories.map((cat) => cat.name).join(', ') || data.user?.category?.name || '',
         };
 
         sessionStorage.setItem('healernet_registration', JSON.stringify(registrationResult));
@@ -683,15 +692,23 @@ export default function RegisterForm({ onNavigate, onSuccessRedirect }) {
           </label>
           <SearchableSelect
             id="register-category"
-            value={formData.categoryId}
-            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+            multiple
+            max={MAX_CATEGORIES}
+            value={formData.categoryIds}
+            onChange={(e) => setFormData({ ...formData, categoryIds: e.target.value })}
             disabled={loadingCategories}
             className={SELECT}
             placeholder={loadingCategories ? 'Loading categories…' : 'Select Category'}
             searchPlaceholder="Search category…"
             options={categories.map((cat) => ({ value: cat.id, label: cat.name }))}
           />
-          {fieldErrors.category_id && <p className={FIELD_ERROR}>{fieldErrors.category_id[0]}</p>}
+          <p className="text-[11px] text-slate-500 dark:text-emerald-200/60 mt-1.5">
+            Select {MAX_CATEGORIES} categories that you work in
+            {formData.categoryIds.length > 0 ? ` · ${formData.categoryIds.length} selected` : ''}.
+          </p>
+          {(fieldErrors.category_id || fieldErrors.category_ids) && (
+            <p className={FIELD_ERROR}>{(fieldErrors.category_id || fieldErrors.category_ids)[0]}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-[7.5rem_minmax(0,1fr)] gap-3">
